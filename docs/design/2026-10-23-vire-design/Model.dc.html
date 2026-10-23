@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vire — Plan hierarchy and data bridges</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0D1012}
+</style>
+</helmet>
+<div style="position: relative; width: 1200px; height: 900px; background: #0D1012; color: #EEF1F3; font-family: Inter, system-ui, sans-serif; font-size: 15px; line-height: 20px">
+<div style="position: absolute; left: 800px; top: 484px; width: 352px; height: 344px; box-sizing: border-box; background: #12161A; border: 1px solid #22282E; border-radius: 16px"></div>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 220px; top: 212px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-1" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-1)"></path></svg>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 220px; top: 332px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-2" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-2)"></path></svg>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 220px; top: 452px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-3" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-3)"></path></svg>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 220px; top: 572px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-4" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-4)"></path></svg>
+<svg width="8" height="47" viewBox="0 0 8 47" preserveAspectRatio="none" style="position: absolute; left: 220px; top: 692px; width: 8px; height: 47px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-5" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 0 L 4 43" marker-end="url(#dc-arrow-head-filled-5)"></path></svg>
+<svg width="431" height="8" viewBox="0 0 431 8" preserveAspectRatio="none" style="position: absolute; left: 385px; top: 172px; width: 431px; height: 8px; overflow: visible; fill: none; stroke: #B7F36B; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-6" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#B7F36B" stroke="none" style="stroke: none; fill: #B7F36B; fill: context-stroke"/></marker></defs><path d="M 431 4 L 4 4" marker-end="url(#dc-arrow-head-filled-6)"></path></svg>
+<svg width="431" height="8" viewBox="0 0 431 8" preserveAspectRatio="none" style="position: absolute; left: 385px; top: 772px; width: 431px; height: 8px; overflow: visible; fill: none; stroke: #5DB8F5; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-9" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#5DB8F5" stroke="none" style="stroke: none; fill: #5DB8F5; fill: context-stroke"/></marker></defs><path d="M 431 4 L 4 4" marker-end="url(#dc-arrow-head-filled-9)"></path></svg>
+<svg width="431" height="8" viewBox="0 0 431 8" preserveAspectRatio="none" style="position: absolute; left: 385px; top: 532px; width: 431px; height: 8px; overflow: visible; fill: none; stroke: #F4B740; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-7" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#F4B740" stroke="none" style="stroke: none; fill: #F4B740; fill: context-stroke"/></marker></defs><path d="M 431 4 L 4 4" marker-end="url(#dc-arrow-head-filled-7)"></path></svg>
+<svg width="431" height="8" viewBox="0 0 431 8" preserveAspectRatio="none" style="position: absolute; left: 385px; top: 652px; width: 431px; height: 8px; overflow: visible; fill: none; stroke: #5DB8F5; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round"><defs><marker id="dc-arrow-head-filled-8" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#5DB8F5" stroke="none" style="stroke: none; fill: #5DB8F5; fill: context-stroke"/></marker></defs><path d="M 431 4 L 4 4" marker-end="url(#dc-arrow-head-filled-8)"></path></svg>
+<svg width="8" height="271" viewBox="0 0 8 271" preserveAspectRatio="none" style="position: absolute; left: 972px; top: 213px; width: 8px; height: 271px; overflow: visible; fill: none; stroke: #6B757E; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 6 6"><defs><marker id="dc-arrow-head-filled-10" orient="auto" markerWidth="5" markerHeight="5" refX="2" refY="2" overflow="visible"><path d="M0 0 L4 2 L0 4 Z" fill="#6B757E" stroke="none" style="stroke: none; fill: #6B757E; fill: context-stroke"/></marker></defs><path d="M 4 271 L 4 4" marker-end="url(#dc-arrow-head-filled-10)"></path></svg>
+
+<div style="position: absolute; left: 64px; top: 56px; font-size: 26px; line-height: 32px; font-weight: 700; letter-spacing: -0.01em">Plan hierarchy and data bridges</div>
+<div style="position: absolute; left: 64px; top: 96px; font-size: 12px; line-height: 16px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: #A0A9B1">The plan</div>
+<div style="position: absolute; left: 816px; top: 96px; font-size: 12px; line-height: 16px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; color: #A0A9B1">Sources</div>
+
+<div style="position: absolute; left: 64px; top: 140px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Goal</b><br><span style="color: #A0A9B1">Ironman, Aug 2027 · race at 80 kg</span></span></div>
+<div style="position: absolute; left: 64px; top: 260px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Season</b><br><span style="color: #A0A9B1">Foundation · Base · Build · Race</span></span></div>
+<div style="position: absolute; left: 64px; top: 380px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Block</b><br><span style="color: #A0A9B1">3–4 wks: load cycles + recovery</span></span></div>
+<div style="position: absolute; left: 64px; top: 500px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Cycle</b><br><span style="color: #A0A9B1">Any length · default Mon–Sun</span></span></div>
+<div style="position: absolute; left: 64px; top: 620px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Day</b><br><span style="color: #A0A9B1">Date · readiness · fuel target</span></span></div>
+<div style="position: absolute; left: 64px; top: 740px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #161A1E; border: 1px solid #2E353C; border-radius: 12px"><span><b style="color: #B7F36B">Session</b><br><span style="color: #A0A9B1">One workout · several per day</span></span></div>
+
+<div style="position: absolute; left: 816px; top: 140px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #1A2016; border: 1px solid #4E6631; border-radius: 12px"><span><b>Coach, over MCP</b><br><span style="color: #A0A9B1">Plans, adapts, explains why</span></span></div>
+<div style="position: absolute; left: 816px; top: 500px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #1F1A10; border: 1px solid #6B5A2E; border-radius: 12px"><span><b>MacroFactor export</b><br><span style="color: #A0A9B1">Food log · weight · expenditure</span></span></div>
+<div style="position: absolute; left: 816px; top: 620px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #121C25; border: 1px solid #2D4A63; border-radius: 12px"><span><b>Garmin — wellness</b><br><span style="color: #A0A9B1">HRV · sleep · stress · resting HR</span></span></div>
+<div style="position: absolute; left: 816px; top: 740px; width: 320px; height: 72px; box-sizing: border-box; padding: 8px 16px; display: flex; align-items: center; background: #121C25; border: 1px solid #2D4A63; border-radius: 12px"><span><b>Garmin — activities</b><br><span style="color: #A0A9B1">Summaries + original FIT files</span></span></div>
+
+<div style="position: absolute; left: 464px; top: 148px; width: 272px; text-align: center; font-size: 13px; line-height: 16px; color: #A0A9B1">writes every level, with rationale</div>
+<div style="position: absolute; left: 440px; top: 748px; width: 320px; text-align: center; font-size: 13px; line-height: 16px; color: #A0A9B1">actual vs planned, matched on start time</div>
+<div style="position: absolute; left: 452px; top: 508px; width: 296px; text-align: center; font-size: 13px; line-height: 16px; color: #A0A9B1">weight trend and energy balance per cycle</div>
+<div style="position: absolute; left: 448px; top: 628px; width: 304px; text-align: center; font-size: 13px; line-height: 16px; color: #A0A9B1">shown with the day, as context</div>
+<div style="position: absolute; left: 988px; top: 332px; width: 128px; font-size: 13px; line-height: 16px; color: #A0A9B1">reads every source</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

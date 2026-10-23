@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vire — Session review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0D1012}
+a{color:#B7F36B}a:hover{color:#D4FA9F}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#A0A9B1;font-weight:600}
+.num{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.card{background:#161A1E;border:1px solid #252B31;border-radius:18px}
+.tab{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;min-height:48px;font-size:11px;font-weight:600;color:#A0A9B1;text-decoration:none}
+.tab:hover{color:#EEF1F3}
+</style>
+</helmet>
+<div style="width: 390px; height: 1180px; position: relative; box-sizing: border-box; background: #0D1012; color: #EEF1F3; font-family: Inter, system-ui, sans-serif; overflow: hidden">
+  <div style="padding: 20px 20px 110px; display: flex; flex-direction: column; gap: 14px">
+
+    <a href="Main.dc.html" aria-label="Back to Today" style="display: inline-flex; align-items: center; gap: 4px; min-height: 44px; font-size: 14px; font-weight: 600; text-decoration: none; color: #A0A9B1; align-self: flex-start">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"></path></svg>Today
+    </a>
+
+    <header style="display: flex; gap: 14px; align-items: center">
+      <div style="width: 48px; height: 48px; border-radius: 14px; background: #15293A; display: grid; place-items: center; flex: none">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#5DB8F5" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2 15c2 0 2-1.5 4-1.5S8 15 10 15s2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5M2 19.5c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"></path><circle cx="16" cy="6" r="2"></circle><path d="M5 11l5-4 3 3"></path></svg>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 3px; flex: 1">
+        <span class="lbl">Fri 23 Oct · Completed 06:32</span>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.01em">Swim — endurance</h1>
+      </div>
+      <span style="font-size: 12px; font-weight: 700; color: #0D1012; background: #B7F36B; padding: 5px 10px; border-radius: 999px; flex: none">On plan</span>
+    </header>
+
+    <section class="card" style="overflow: hidden">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) 80px 80px; gap: 10px; padding: 12px 18px 8px; font-size: 12px; color: #A0A9B1">
+        <span></span><span style="text-align: right">Planned</span><span style="text-align: right">Actual</span>
+      </div>
+      <sc-for list="{{compare}}" as="c" hint-placeholder-count="5">
+        <div style="display: grid; grid-template-columns: minmax(0, 1fr) 80px 80px; gap: 10px; align-items: center; padding: 10px 18px; border-top: 1px solid #22282E">
+          <span style="font-size: 14px">{{c.name}}</span>
+          <span class="num" style="font-size: 17px; text-align: right; color: #A0A9B1">{{c.plan}}</span>
+          <span class="num" style="font-size: 17px; text-align: right">{{c.actual}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <section class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline">
+        <span class="lbl">Main set · 6 × 400</span>
+        <span style="font-size: 12px; color: #A0A9B1">Target 2:15–2:20 /100 m</span>
+      </div>
+      <sc-for list="{{reps}}" as="r" hint-placeholder-count="6">
+        <div style="display: flex; align-items: center; gap: 10px">
+          <span class="num" style="width: 16px; font-size: 15px; color: #A0A9B1">{{r.n}}</span>
+          <div style="flex: 1; height: 10px; border-radius: 5px; background: #232930"><div style="{{r.barStyle}}"></div></div>
+          <span class="num" style="width: 40px; text-align: right; font-size: 16px">{{r.pace}}</span>
+          <span class="num" style="width: 40px; text-align: right; font-size: 14px; color: #A0A9B1">{{r.strokes}}</span>
+        </div>
+      </sc-for>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; font-size: 11px; color: #A0A9B1">
+        <span style="width: 40px; text-align: right">/100 m</span><span style="width: 40px; text-align: right">strokes</span>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <span class="lbl">Coach review</span>
+      <p style="margin: 0; font-size: 14px; line-height: 1.5">Even pacing through the first five reps; the last faded 4 s/100 m. Stroke count held at 19–20 per length, so technique survived the fatigue. Your best endurance swim this block.</p>
+      <div style="display: flex; gap: 8px; font-size: 13px; line-height: 1.45; padding: 12px; border-radius: 12px; background: #1C2126">
+        <span style="color: #5DB8F5; font-weight: 600; flex: none">Next</span>
+        <span>Mon 26 Oct: same 6 × 400, rest cut from 30″ to 15″.</span>
+      </div>
+    </section>
+
+    <span style="font-size: 12px; color: #A0A9B1; padding: 0 4px">Garmin FR955 · FIT matched to plan on start time · feel and RPE from the watch</span>
+  </div>
+
+  <nav aria-label="Primary" style="position: absolute; left: 0; right: 0; bottom: 0; height: 84px; box-sizing: border-box; padding: 6px 8px 22px; background: #111518; border-top: 1px solid #252B31; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr))">
+    <a href="Main.dc.html" class="tab" aria-current="page" style="color: #B7F36B">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>Today
+    </a>
+    <a href="Block.dc.html" class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M3 10h18M8 3v4M16 3v4"></path></svg>Plan
+    </a>
+    <a href="Readiness.dc.html" class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2-5 4 10 2-5h6"></path></svg>Readiness
+    </a>
+    <a href="Nutrition.dc.html" class="tab">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20c4-1 7-4 8-9M12 11c1-3 4-6 8-7-1 4-4 7-8 7zM12 11C10 8 7 7 4 7c0 3 2 6 8 4"></path></svg>Nutrition
+    </a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const compare = [
+      { name: 'Distance', plan: '3.00 km', actual: '3.05 km' },
+      { name: 'Moving time', plan: '1:08', actual: '1:08:40' },
+      { name: 'Avg pace /100 m', plan: '2:15–2:20', actual: '2:15' },
+      { name: 'SWOLF', plan: '—', actual: '53' },
+      { name: 'RPE · feel', plan: '5', actual: '5 · Good' }
+    ];
+    const reps = [
+      ['1', '2:16', 20], ['2', '2:15', 19], ['3', '2:15', 19], ['4', '2:14', 19], ['5', '2:16', 20], ['6', '2:20', 20]
+    ].map(([n, pace, strokes]) => {
+      const sec = Number(pace.split(':')[0]) * 60 + Number(pace.split(':')[1]);
+      const pct = Math.round((sec - 125) / (145 - 125) * 100);
+      return { n, pace, strokes, barStyle: 'height: 10px; border-radius: 5px; width: ' + pct + '%; background: ' + (sec > 138 ? '#FFB27A' : '#5DB8F5') };
+    });
+    return { compare, reps };
+  }
+}
+</script>
+</body>
+</html>

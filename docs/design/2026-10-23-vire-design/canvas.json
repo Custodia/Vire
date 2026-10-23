@@ -1,0 +1,23 @@
+{
+  "v": 3,
+  "createdOnFiles": {"v": 1, "at": "2026-10-23T14:40:00Z"},
+  "title": "Vire",
+  "launch": {"view": "canvas"},
+  "pages": [],
+  "boards": {
+    "Main.dc.html": {"x": 0, "y": 0, "w": 390, "h": 1180, "title": "Today", "is_interactive": true},
+    "Session.dc.html": {"x": 470, "y": 0, "w": 390, "h": 1180, "title": "Session", "is_interactive": true},
+    "Readiness.dc.html": {"x": 940, "y": 0, "w": 390, "h": 1180, "title": "Readiness", "is_interactive": true},
+    "Nutrition.dc.html": {"x": 1410, "y": 0, "w": 390, "h": 1180, "title": "Nutrition", "is_interactive": true},
+    "Block.dc.html": {"x": 1880, "y": 0, "w": 390, "h": 1180, "title": "Plan — block", "is_interactive": true},
+    "SessionReview.dc.html": {"x": 2350, "y": 0, "w": 390, "h": 1180, "title": "Session — review", "is_interactive": true},
+    "Season.dc.html": {"x": 0, "y": 1580, "w": 1440, "h": 1640, "title": "Plan — season (desktop)", "expand": "fill"},
+    "Model.dc.html": {"x": 1520, "y": 1580, "w": 1200, "h": 900, "title": "Plan hierarchy and data bridges"}
+  },
+  "order": ["Main.dc.html", "Session.dc.html", "Readiness.dc.html", "Nutrition.dc.html", "Block.dc.html", "SessionReview.dc.html", "Season.dc.html", "Model.dc.html"],
+  "notes": {
+    "rowPhone": {"x": 0, "y": -280, "text": "Phone — the daily loop", "kind": "title1", "maxW": 2740},
+    "rowDesk": {"x": 0, "y": 1300, "text": "Desktop — planning", "kind": "title1", "maxW": 2720}
+  },
+  "designSystems": []
+}

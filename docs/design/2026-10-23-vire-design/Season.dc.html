@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vire — Season plan</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Barlow+Condensed:wght@500;600;700&amp;display=swap">
+<style>
+body{margin:0;background:#0D1012}
+a{color:#B7F36B}a:hover{color:#D4FA9F}
+.lbl{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#A0A9B1;font-weight:600}
+.num{font-family:'Barlow Condensed',Inter,sans-serif;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.card{background:#161A1E;border:1px solid #252B31;border-radius:18px}
+.nav a{color:#A0A9B1;text-decoration:none;font-size:14px;font-weight:600;padding:10px 14px;border-radius:10px;min-height:44px;box-sizing:border-box;display:inline-flex;align-items:center}
+.nav a:hover{color:#EEF1F3;background:#161A1E}
+</style>
+</helmet>
+<div style="min-height: 1640px; box-sizing: border-box; background: #0D1012; color: #EEF1F3; font-family: Inter, system-ui, sans-serif">
+  <header style="border-bottom: 1px solid #1E2328">
+    <div style="max-width: 1360px; margin: 0 auto; padding: 14px 32px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px">
+      <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.02em">vire</span>
+      <nav class="nav" aria-label="Primary" style="display: flex; flex-wrap: wrap; gap: 2px; flex: 1">
+        <a href="Main.dc.html">Today</a>
+        <a href="Season.dc.html" aria-current="page" style="color: #B7F36B; background: #161A1E">Plan</a>
+        <a href="Readiness.dc.html">Readiness</a>
+        <a href="Nutrition.dc.html">Nutrition</a>
+      </nav>
+      <span style="font-size: 12px; color: #A0A9B1">Garmin 06:05 · MacroFactor 07:40</span>
+    </div>
+  </header>
+
+  <main style="max-width: 1360px; margin: 0 auto; padding: 28px 32px 48px; display: flex; flex-direction: column; gap: 20px">
+
+    <section style="display: flex; flex-wrap: wrap; gap: 20px 40px; align-items: flex-end; justify-content: space-between">
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <span class="lbl">Goal</span>
+        <h1 style="margin: 0; font-size: 36px; font-weight: 700; letter-spacing: -0.02em">[RACE] — full distance, August 2027</h1>
+        <span style="font-size: 14px; color: #A0A9B1">Finish strong at [TARGET TIME], racing at 80 kg</span>
+      </div>
+      <div style="display: flex; flex-wrap: wrap; gap: 28px">
+        <div style="display: flex; flex-direction: column; gap: 2px"><span class="num" style="font-size: 34px; color: #B7F36B">42</span><span style="font-size: 12px; color: #A0A9B1">weeks to go</span></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span class="num" style="font-size: 34px">88.4 <span style="font-size: 18px; color: #A0A9B1">→ 80 kg</span></span><span style="font-size: 12px; color: #A0A9B1">trend weight</span></div>
+        <div style="display: flex; flex-direction: column; gap: 2px"><span class="num" style="font-size: 34px">54 <span style="font-size: 18px; color: #A0A9B1">→ 95</span></span><span style="font-size: 12px; color: #A0A9B1">chronic load (CTL)</span></div>
+      </div>
+    </section>
+
+    <section class="card" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px">
+        <span class="lbl">Season map · 21 Sep 2026 – Aug 2027</span>
+        <span style="font-size: 12px; color: #A0A9B1">Later seasons get their blocks when they start</span>
+      </div>
+
+      <div style="overflow-x: auto">
+        <div style="min-width: 900px; display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 14px; align-items: center">
+
+          <span style="font-size: 12px; color: #A0A9B1">Seasons</span>
+          <div style="display: flex; gap: 4px; height: 44px">
+            <sc-for list="{{seasons}}" as="s" hint-placeholder-count="4">
+              <div style="{{s.style}}">
+                <span style="font-size: 13px; font-weight: 700">{{s.name}}</span>
+                <span style="font-size: 11px; opacity: .8">{{s.dates}}</span>
+              </div>
+            </sc-for>
+          </div>
+
+          <span style="font-size: 12px; color: #A0A9B1">Blocks</span>
+          <div style="display: flex; gap: 4px; height: 30px">
+            <sc-for list="{{blocks}}" as="b" hint-placeholder-count="5">
+              <div style="{{b.style}}">{{b.name}}</div>
+            </sc-for>
+          </div>
+
+          <span style="font-size: 12px; color: #A0A9B1">Hours / week</span>
+          <div style="position: relative; display: flex; gap: 2px; align-items: flex-end; height: 90px; border-bottom: 1px solid #2E353C">
+            <sc-for list="{{weeks}}" as="w" hint-placeholder-count="47">
+              <div style="{{w.style}}"></div>
+            </sc-for>
+            <div style="position: absolute; left: 9.6%; top: -6px; bottom: -6px; width: 2px; background: #EEF1F3"></div>
+          </div>
+
+          <span style="font-size: 12px; color: #A0A9B1">Weight, kg</span>
+          <div style="position: relative; height: 90px">
+            <svg viewBox="0 0 470 90" preserveAspectRatio="none" width="100%" height="90" role="img" aria-label="Weight path: target falls from 90.2 kilograms in September to 80 at the end of May, then holds to race day; the actual trend so far tracks slightly ahead" style="display: block">
+              <polyline points="{{targetPts}}" fill="none" stroke="#5DB8F5" stroke-width="2" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"></polyline>
+              <polyline points="{{actualPts}}" fill="none" stroke="#B7F36B" stroke-width="3" vector-effect="non-scaling-stroke"></polyline>
+            </svg>
+            <span class="num" style="position: absolute; left: 0; top: -2px; font-size: 13px; color: #A0A9B1">90</span>
+            <span class="num" style="position: absolute; left: 77%; top: 62px; font-size: 13px; color: #5DB8F5">80 by 31 May</span>
+            <div style="position: absolute; left: 9.6%; top: -6px; bottom: -6px; width: 2px; background: #EEF1F3"></div>
+          </div>
+
+          <span></span>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: #A0A9B1">
+            <span>Oct</span><span>Nov</span><span>Dec</span><span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span><span>Jul</span><span>Aug</span>
+          </div>
+        </div>
+      </div>
+      <div style="display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: #A0A9B1; padding-top: 4px">
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="#7FA84B"></rect></svg>Done</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="#B7F36B"></rect></svg>This cycle</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="#4A535C"></rect></svg>Planned</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="10" height="10" aria-hidden="true"><rect width="10" height="10" rx="2" fill="#262C32"></rect></svg>Projected</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="4" aria-hidden="true"><rect width="14" height="3" fill="#B7F36B"></rect></svg>Trend weight</span>
+        <span style="display: inline-flex; align-items: center; gap: 6px"><svg width="14" height="4" aria-hidden="true"><rect width="6" height="3" fill="#5DB8F5"></rect><rect x="9" width="5" height="3" fill="#5DB8F5"></rect></svg>Target path</span>
+      </div>
+    </section>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start">
+      <div style="flex: 999 1 640px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+
+        <section class="card" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">Foundation · blocks</h2>
+            <span style="font-size: 12px; color: #A0A9B1">Aerobic base, swim technique, steady weight loss</span>
+          </div>
+          <div style="overflow-x: auto">
+            <table style="width: 100%; min-width: 620px; border-collapse: collapse; font-size: 13px">
+              <thead>
+                <tr style="text-align: left; color: #A0A9B1; font-size: 12px">
+                  <th scope="col" style="padding: 8px 10px 8px 0; font-weight: 600">Block</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 600">Dates</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 600">Cycles</th>
+                  <th scope="col" style="padding: 8px 10px; font-weight: 600">Focus</th>
+                  <th scope="col" style="padding: 8px 0 8px 10px; font-weight: 600; text-align: right">Hours</th>
+                </tr>
+              </thead>
+              <tbody>
+                <sc-for list="{{blockRows}}" as="r" hint-placeholder-count="4">
+                  <tr style="{{r.rowStyle}}">
+                    <td style="padding: 11px 10px 11px 0; font-weight: 600">{{r.name}}</td>
+                    <td style="padding: 11px 10px; color: #A0A9B1; white-space: nowrap">{{r.dates}}</td>
+                    <td style="padding: 11px 10px">
+                      <div style="display: flex; gap: 3px; align-items: center">
+                        <sc-for list="{{r.cycles}}" as="c" hint-placeholder-count="4">
+                          <span style="{{c.style}}"></span>
+                        </sc-for>
+                        <span style="margin-left: 8px; color: #A0A9B1; white-space: nowrap">{{r.pattern}}</span>
+                      </div>
+                    </td>
+                    <td style="padding: 11px 10px">{{r.focus}}</td>
+                    <td class="num" style="padding: 11px 0 11px 10px; text-align: right; font-size: 16px">{{r.hours}}</td>
+                  </tr>
+                </sc-for>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 12px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">Block 2 · cycles × days</h2>
+            <a href="Block.dc.html" style="font-size: 13px; font-weight: 600">Open block</a>
+          </div>
+          <div style="overflow-x: auto">
+            <div style="min-width: 720px; display: grid; grid-template-columns: 96px repeat(7, minmax(0, 1fr)); gap: 4px">
+              <span></span>
+              <sc-for list="{{dayHeads}}" as="h" hint-placeholder-count="7">
+                <span style="font-size: 12px; color: #A0A9B1; font-weight: 600; padding: 0 6px">{{h}}</span>
+              </sc-for>
+              <sc-for list="{{grid}}" as="row" hint-placeholder-count="4">
+                <div style="display: flex; flex-direction: column; justify-content: center; gap: 2px; padding-right: 6px">
+                  <span style="{{row.nameStyle}}">{{row.name}}</span>
+                  <span class="num" style="font-size: 13px; color: #A0A9B1">{{row.hours}}</span>
+                </div>
+                <sc-for list="{{row.cells}}" as="cell" hint-placeholder-count="7">
+                  <div style="{{cell.style}}">
+                    <sc-for list="{{cell.items}}" as="it" hint-placeholder-count="1">
+                      <span style="{{it.style}}">{{it.label}}</span>
+                    </sc-for>
+                  </div>
+                </sc-for>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: #A0A9B1">
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: #13261A; border: 1px solid #2F5A2A; color: #B7F36B">✓</span>Done</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: #2B1512; border: 1px solid #6A2A22; color: #FF9A85">✕</span>Skipped</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 5px; background: #2E2410; color: #F7CB72">Bike</span>Upcoming, in sport colour</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span style="font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; border: 1px dashed #3A424A">Rest</span>Rest day</span>
+            <span style="display: inline-flex; align-items: center; gap: 6px"><span style="width: 14px; height: 14px; border-radius: 4px; box-sizing: border-box; border: 2px solid #B7F36B"></span>Today</span>
+          </div>
+        </section>
+      </div>
+
+      <aside style="flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 20px">
+        <section class="card" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px">
+          <h2 style="margin: 0; font-size: 18px; font-weight: 700">Foundation targets</h2>
+          <sc-for list="{{targets}}" as="t" hint-placeholder-count="5">
+            <div style="display: flex; flex-direction: column; gap: 6px">
+              <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px">
+                <span style="font-weight: 600">{{t.name}}</span>
+                <span class="num" style="font-size: 15px; color: #A0A9B1">{{t.range}}</span>
+              </div>
+              <div style="height: 6px; border-radius: 3px; background: #232930"><div style="{{t.barStyle}}"></div></div>
+            </div>
+          </sc-for>
+        </section>
+
+        <section class="card" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; justify-content: space-between; align-items: baseline; padding-bottom: 8px">
+            <h2 style="margin: 0; font-size: 18px; font-weight: 700">Coach log</h2>
+            <span style="font-size: 12px; color: #A0A9B1">Changes made over MCP</span>
+          </div>
+          <sc-for list="{{log}}" as="l" hint-placeholder-count="4">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-top: 1px solid #22282E">
+              <div style="display: flex; justify-content: space-between; gap: 8px">
+                <span style="font-size: 14px; font-weight: 600">{{l.what}}</span>
+                <span style="font-size: 12px; color: #A0A9B1; white-space: nowrap">{{l.when}}</span>
+              </div>
+              <span style="font-size: 13px; line-height: 1.45; color: #A0A9B1">{{l.why}}</span>
+            </div>
+          </sc-for>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1640}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const seg = (weeks, bg, fg) => 'flex: ' + weeks + ' 1 0; min-width: 0; border-radius: 8px; padding: 6px 10px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; overflow: hidden; white-space: nowrap; background: ' + bg + '; color: ' + fg;
+    const seasons = [
+      { name: 'Foundation', dates: '21 Sep – 27 Dec', style: seg(14, '#B7F36B', '#0D1012') },
+      { name: 'Base', dates: '28 Dec – 28 Mar', style: seg(13, '#2B3A1E', '#DCEBC7') },
+      { name: 'Build', dates: '29 Mar – 27 Jun', style: seg(13, '#2B3A1E', '#DCEBC7') },
+      { name: 'Race', dates: '28 Jun – race', style: seg(7, '#2B3A1E', '#DCEBC7') }
+    ];
+    const blk = (weeks, bg, fg, extra) => 'flex: ' + weeks + ' 1 0; min-width: 0; border-radius: 6px; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 600; overflow: hidden; white-space: nowrap; background: ' + bg + '; color: ' + fg + (extra || '');
+    const blocks = [
+      { name: 'B1', style: blk(3, '#4E6631', '#EEF1F3') },
+      { name: 'B2', style: blk(4, '#B7F36B', '#0D1012') },
+      { name: 'B3 · 10-day', style: blk(4, '#2E353C', '#EEF1F3') },
+      { name: 'B4', style: blk(3, '#2E353C', '#EEF1F3') },
+      { name: 'Generated at each season start', style: blk(33, 'transparent', '#A0A9B1', '; border: 1px dashed #2E353C') }
+    ];
+    const hours = [7.5, 8, 5.5, 8.5, 9.5, 10.5, 6, 10, 11, 11.5, 6.5, 10.5, 11.5, 6,
+      10.5, 11, 12, 7, 11.5, 12, 12.5, 7.5, 12, 12.5, 13, 8, 12,
+      13, 13.5, 14, 8.5, 13.5, 14.5, 15, 9, 14, 15, 15.5, 9.5, 13,
+      14, 15, 12, 16, 10, 8, 6];
+    const weeks = hours.map((h, i) => {
+      const c = i < 4 ? '#7FA84B' : i === 4 ? '#B7F36B' : i < 14 ? '#4A535C' : '#262C32';
+      return { style: 'flex: 1 1 0; min-width: 0; border-radius: 3px 3px 0 0; height: ' + Math.round(h / 16 * 84) + 'px; background: ' + c };
+    });
+    const n = hours.length, x = (w) => (w / n * 470).toFixed(1), y = (kg) => ((91 - kg) / (91 - 78) * 86 + 2).toFixed(1);
+    const targetPts = [x(0) + ',' + y(90.2), x(36) + ',' + y(80), x(n) + ',' + y(80)].join(' ');
+    const actual = [90.2, 89.9, 89.5, 89.1, 88.7, 88.4];
+    const actualPts = actual.map((kg, i) => x(i * 4.5 / 5) + ',' + y(kg)).join(' ');
+    const dot = (kind, wide) => 'height: 10px; border-radius: 3px; width: ' + (wide ? 18 : 10) + 'px; background: ' + ({ done: '#7FA84B', now: '#B7F36B', plan: '#4A535C', rec: '#2D4A63' })[kind];
+    const blockRows = [
+      { name: 'Block 1', dates: '21 Sep – 11 Oct', pattern: '2 × 7d + 7d recovery', focus: 'Re-entry, aerobic base', hours: '21.0', state: 'done', cycles: [dot('done'), dot('done'), dot('rec')] },
+      { name: 'Block 2', dates: '12 Oct – 8 Nov', pattern: '3 × 7d + 7d recovery', focus: 'Threshold, swim frequency', hours: '34.5', state: 'now', cycles: [dot('done'), dot('now'), dot('plan'), dot('rec')] },
+      { name: 'Block 3', dates: '9 Nov – 5 Dec', pattern: '2 × 10d + 7d recovery', focus: 'Bike volume, longer run/walks', hours: '39.0', state: 'plan', cycles: [dot('plan', true), dot('plan', true), dot('rec')] },
+      { name: 'Block 4', dates: '6 – 27 Dec', pattern: '2 × 7d + 8d recovery', focus: 'Holiday block, hold fitness', hours: '28.0', state: 'plan', cycles: [dot('plan'), dot('plan'), dot('rec')] }
+    ].map((r) => ({ ...r, cycles: r.cycles.map((style) => ({ style })), rowStyle: 'border-top: 1px solid #22282E' + (r.state === 'now' ? '; background: #1A2016' : '') }));
+    const dayHeads = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const col = { S: ['#15293A', '#8CCBF7'], B: ['#2E2410', '#F7CB72'], R: ['#35202B', '#F3AFCD'], X: ['#262036', '#CDBFF9'] };
+    const base = 'display: block; font-size: 11px; font-weight: 600; padding: 3px 6px; border-radius: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; ';
+    const chip = (code, done) => {
+      if (code === 'Rest') return { label: 'Rest', style: base + 'background: transparent; color: #A0A9B1; border: 1px dashed #3A424A' };
+      const skipped = code[0] === '~';
+      const [sport, ...rest] = (skipped ? code.slice(1) : code).split(' ');
+      const [bg, fg] = col[sport];
+      if (skipped) return { label: '✕ ' + rest.join(' '), style: base + 'background: #2B1512; color: #FF9A85; border: 1px solid #6A2A22; text-decoration: line-through' };
+      if (done) return { label: '✓ ' + rest.join(' '), style: base + 'background: #13261A; color: #B7F36B; border: 1px solid #2F5A2A' };
+      return { label: rest.join(' '), style: base + 'background: ' + bg + '; color: ' + fg };
+    };
+    const cellStyle = (state) => 'min-height: 58px; padding: 6px; border-radius: 8px; display: flex; flex-direction: column; gap: 4px; background: ' +
+      ({ done: '#0F1214', today: '#1A2016', plan: '#1E2328', rec: '#18222C' })[state] + (state === 'today' ? '; outline: 2px solid #B7F36B; outline-offset: -2px' : '');
+    const mk = (name, hours, kind, days, todayIdx) => ({
+      name, hours,
+      nameStyle: 'font-size: 13px; font-weight: 700; color: ' + (kind === 'now' ? '#B7F36B' : '#EEF1F3'),
+      cells: days.map((d, i) => {
+        const done = kind === 'done' || (kind === 'now' && i < todayIdx);
+        return {
+          style: cellStyle(kind === 'rec' ? 'rec' : i === todayIdx ? 'today' : done ? 'done' : 'plan'),
+          items: d.map((c) => chip(c, done || (i === todayIdx && c === 'S End 3.0k')))
+        };
+      })
+    });
+    const grid = [
+      mk('Load 1', '8.5 h', 'done', [['Rest'], ['B Z2 70′', 'X Str A'], ['R Run/walk 35′', 'S CSS 2.6k'], ['B Thr 3×10′'], ['~S End 2.8k'], ['B Z2 2h'], ['R Long 60′']], -1),
+      mk('Load 2', '9.5 h', 'now', [['S Tech 2.4k', 'X Str A'], ['B Z2 75′'], ['R Run/walk 40′', 'S CSS 2.8k'], ['B Z2 60′'], ['S End 3.0k', 'R Run/walk 35′'], ['B Thr 3×12′'], ['R Long 70′', 'X Mobility']], 4),
+      mk('Load 3', '10.5 h', 'plan', [['Rest'], ['B Z2 90′', 'X Str B'], ['R Run/walk 45′', 'S CSS 3.0k'], ['B Thr 3×14′'], ['S End 3.2k'], ['B Z2 2h30'], ['R Long 80′']], -1),
+      mk('Recovery', '6.0 h', 'rec', [['Rest'], ['S Easy 2.0k'], ['B Z2 60′'], ['Rest'], ['S Tech 2.0k'], ['B FTP test'], ['R Easy 40′']], -1)
+    ];
+    const tbar = (pct, c) => ({ barStyle: 'height: 6px; border-radius: 3px; width: ' + pct + '%; background: ' + (c || '#B7F36B') });
+    const targets = [
+      { name: 'Trend weight', range: '90.2 → 85.0 kg', ...tbar(35) },
+      { name: 'FTP', range: '289 → 300 W', ...tbar(0, '#F4B740') },
+      { name: 'Swim CSS', range: '2:08 → 1:58 /100 m', ...tbar(30, '#5DB8F5') },
+      { name: 'Continuous Z2 run', range: '15′ → 45′', ...tbar(25, '#EE8AB8') },
+      { name: 'Strength sessions', range: '2 per cycle', ...tbar(90, '#B4A2F5') }
+    ];
+    const log = [
+      { what: 'Moved threshold ride Thu → Sat', when: 'Thu 22 Oct', why: 'HRV below the 65–79 band for three nights. Thursday became 60′ Z2.' },
+      { what: 'Third swim added to each cycle', when: 'Mon 19 Oct', why: 'CSS test 2:08 /100 m. Frequency moves technique faster than volume at this stage.' },
+      { what: 'Created Block 2', when: 'Sun 11 Oct', why: 'Block 1 at 94% compliance, no readiness flags, weight trend −0.45 kg/wk.' },
+      { what: 'Swim endurance skipped, not rescheduled', when: 'Fri 16 Oct', why: 'Missed session landed before a hard weekend. Volume returns in Load 2.' }
+    ];
+    return { seasons, blocks, weeks, targetPts, actualPts, blockRows, dayHeads, grid, targets, log };
+  }
+}
+</script>
+</body>
+</html>
