@@ -11,6 +11,9 @@ lifecycle: living
 docs/
 ├── README.md                  living         index and conventions
 ├── STATE.md                   living         where the repository stands
+├── investigations/
+│   └── 2026-10-23-garmin-personal-api.md
+│                              point-in-time  Garmin Personal API, with OpenAPI spec
 └── architecture/
     ├── overview.md            living         system shape, components, data flow
     └── adr/
