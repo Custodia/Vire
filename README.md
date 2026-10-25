@@ -11,11 +11,11 @@ Workout files are uploaded to the application, decoded and stored.
 
 ## Development
 
-Prerequisites: Elixir 1.20 on Erlang/OTP 29, Node 22, and PostgreSQL 16 on
-localhost:5432 with user and password `postgres`. Exact versions are in
-`.tool-versions`.
+Prerequisites: Elixir 1.20 on Erlang/OTP 29, Node 22, and Docker. Exact versions
+are in `.tool-versions`.
 
 ```sh
+docker compose up -d   # PostgreSQL 16 on localhost:5432, user and password postgres
 mix setup              # dependencies, database, dashboard install and build
 mix phx.server         # API on http://localhost:4000, which serves the last dashboard build
 ```
