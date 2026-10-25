@@ -14,12 +14,13 @@ browser ──HTTP──▶ Phoenix endpoint ──▶ /api/*      JSON API
                                    ──▶ /assets/*   built dashboard files
                                    ──▶ /*          dashboard index.html
                   Oban ◀──────────────▶ PostgreSQL ◀── Ecto repo
+                  FIT decoder ──port──▶ node decoder/decode.js
 ```
 
 ## Server
 
-The supervision tree starts the Ecto repo, Oban, Phoenix PubSub and the endpoint,
-in that order.
+The supervision tree starts the Ecto repo, the FIT decoder, Oban, Phoenix PubSub
+and the endpoint, in that order.
 
 - **`/api`** answers JSON only. `GET /api/health` runs a query against the
   database and answers `{"status": "ok"}`. Any other path under `/api` answers
@@ -115,6 +116,18 @@ and another user's file reads as `nil`.
 - **Its status** is pending until a processor reads it, then processed with the
   processor's version, or failed with the error. Check constraints hold those
   pairings.
+- **The decoder** is a supervised process owning an Erlang port to a Node
+  process that runs `decoder/decode.js` with Garmin's FIT JavaScript SDK
+  ([0008](adr/0008-fit-decoding.md)). Requests and answers are JSON framed by
+  a four-byte big-endian length. Node checks a file's header, size and CRC and
+  answers with the SDK's messages grouped by type, developer fields named after
+  their descriptions, and the units of record and developer fields, or with an
+  error naming what failed. Requests are served one at a time in the order they
+  arrive, each with a timeout, 30 seconds by default, that kills the Node
+  process. An answer that is not a response fails its request and kills the
+  Node process too; the SDK's console output goes to stderr so that stdout
+  carries only responses. A Node process that exits fails the request it was
+  serving, and the next request starts a new one.
 
 ## Dashboard
 
@@ -132,19 +145,20 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 
 ## Environments
 
-| Environment | Server | Database | Jobs | Credential key |
-| --- | --- | --- | --- | --- |
-| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running | Fixed in `config/dev.exs` |
-| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` |
-| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running | Fixed in `config/test.exs` |
-| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it |
+| Environment | Server | Database | Jobs | Credential key | Node |
+| --- | --- | --- | --- | --- | --- |
+| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder |
+| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder |
+| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running | Fixed in `config/test.exs` | The FIT decoder |
+| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it |
 
 ## Tests
 
 Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
-the endpoint against Postgres, and Vitest renders the whole app against the MSW
-handlers in `assets/src/mocks`. Elixir tests tagged `dashboard_build` need the
-built dashboard and are skipped without it. Playwright (`e2e/`, Chromium only)
-opens the built dashboard served by Phoenix against the real database.
-CI runs ExUnit, Vitest and Playwright as separate jobs; the ExUnit and Vitest
-coverage thresholds fail the job when missed.
+the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
+`test/support/fixtures/fit` with the real decoder, and Vitest renders the whole
+app against the MSW handlers in `assets/src/mocks`. Elixir tests tagged
+`dashboard_build` need the built dashboard and are skipped without it.
+Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix
+against the real database. CI runs ExUnit, Vitest and Playwright as separate
+jobs; the ExUnit and Vitest coverage thresholds fail the job when missed.

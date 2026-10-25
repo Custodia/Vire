@@ -7,6 +7,7 @@ defmodule Vire.Application do
   def start(_type, _args) do
     children = [
       Vire.Repo,
+      Vire.Ingest.Decoder,
       {Oban, Application.fetch_env!(:vire, Oban)},
       {Phoenix.PubSub, name: Vire.PubSub},
       VireWeb.Endpoint
