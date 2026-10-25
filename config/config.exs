@@ -19,7 +19,7 @@ config :vire, VireWeb.Endpoint,
 
 config :vire, Oban,
   repo: Vire.Repo,
-  queues: [default: 10],
+  queues: [default: 10, ingest: 2],
   plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7}]
 
 config :vire, Vire.Ingest.Decoder,

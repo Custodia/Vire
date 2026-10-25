@@ -186,26 +186,25 @@ defmodule Vire.Training.ConstraintsTest do
       %{session: session_fixture(scope)}
     end
 
-    test "is done while it is matched to an activity", %{session: session} do
+    test "is done while it is matched to an activity", %{scope: scope, session: session} do
+      activity = activity_fixture(scope, "swim.fit")
+
       {:error, changeset} =
         session
         |> Session.changeset(%{})
-        |> Ecto.Changeset.put_change(:activity_id, Ecto.UUID.generate())
+        |> Ecto.Changeset.put_change(:activity_id, activity.id)
         |> Repo.update()
 
       assert %{status: ["must be done while an activity is matched"]} = errors_on(changeset)
 
       Repo.query!(
         "update training_sessions set status = 'done', activity_id = $1 where id = $2",
-        [
-          uuid(Ecto.UUID.generate()),
-          uuid(session.id)
-        ]
+        [uuid(activity.id), uuid(session.id)]
       )
     end
 
     test "is matched to an activity at most once", %{scope: scope, session: session} do
-      activity_id = uuid(Ecto.UUID.generate())
+      activity_id = uuid(activity_fixture(scope, "swim.fit").id)
       other = session_fixture(scope, position: 1)
       sql = "update training_sessions set status = 'done', activity_id = $1 where id = $2"
 
@@ -213,6 +212,28 @@ defmodule Vire.Training.ConstraintsTest do
 
       assert violation(sql, [activity_id, uuid(other.id)]) ==
                {:unique_violation, "training_sessions_activity_id_index"}
+    end
+
+    test "is matched only to an activity of its own user", %{session: session} do
+      theirs = activity_fixture(scope_fixture(), "swim.fit")
+      sql = "update training_sessions set status = 'done', activity_id = $1 where id = $2"
+
+      assert violation(sql, [uuid(theirs.id), uuid(session.id)]) ==
+               {:foreign_key_violation, "training_sessions_activity_id_fkey"}
+    end
+
+    test "loses its match and stays done when the activity is deleted",
+         %{scope: scope, session: session} do
+      activity = activity_fixture(scope, "swim.fit")
+
+      Repo.query!(
+        "update training_sessions set status = 'done', activity_id = $1 where id = $2",
+        [uuid(activity.id), uuid(session.id)]
+      )
+
+      Repo.delete!(activity)
+
+      assert %Session{activity_id: nil, status: :done} = Repo.get!(Session, session.id)
     end
 
     test "carries a review with its time, and a score from 1 to 5 only with a review",

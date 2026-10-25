@@ -40,7 +40,8 @@ and the endpoint, in that order.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
   the dashboard's router resolves the path. Without a build the answer is a 503.
 
-Oban runs one `default` queue and prunes finished jobs after seven days. Its tables
+Oban runs a `default` queue and an `ingest` queue of two, which parses files, and
+prunes finished jobs after seven days. Its tables
 come from the first migration. Primary keys default to database-generated UUIDs,
 and timestamps to `timestamptz`.
 
@@ -106,7 +107,8 @@ or a delete takes the reason for the change.
 
 The `Ingest` context receives files and turns them into data
 ([0007](adr/0007-source-file-storage.md)). Every function takes the scope first,
-and another user's file reads as `nil`.
+and another user's file reads as `nil`, except the one that enqueues outdated
+files for every user.
 
 - **A source file** keeps the bytes of one received file with its kind, a
   `.fit` file or a nutrition export, its origin, Garmin's API, an upload or MCP,
@@ -128,6 +130,52 @@ and another user's file reads as `nil`.
   Node process too; the SDK's console output goes to stderr so that stdout
   carries only responses. A Node process that exits fails the request it was
   serving, and the next request starts a new one.
+- **A parse job** on the `ingest` queue reads one `.fit` file: it decodes the
+  file, normalises the messages into an activity with its laps, lengths and
+  streams, writes them and marks the file processed in one transaction. A file
+  the decoder or the parser rejects, or whose parse raises, is marked failed
+  with the error and kept, and the job is cancelled; a decoder that does not
+  answer marks it failed and the job is retried, up to three attempts. A file has at most one job waiting
+  or running. Each parse stores the worker's processor version, and enqueuing
+  outdated files queues a parse of every processed file an older version read.
+- **Normalising** takes the start from the first session, and the UTC offset
+  from the activity message's local timestamp against its timestamp, rounded
+  to the quarter hour; the local date is the start at that offset. The
+  duration is the sessions' timer time. Garmin's sport and sub-sport are kept
+  in the FIT profile's snake-case names and map to a discipline: cycling to
+  bike, running to run, swimming to swim, training or the strength-training
+  sub-sport to strength, anything else to other. Every numeric record field
+  becomes a stream with the SDK profile's unit, and every numeric developer
+  field one named after its description unless a native field already holds
+  the name. Enhanced speed and altitude stand in for the plain fields, position
+  is in degrees, cadence carries its fractional part, and a run's cadence is in
+  steps per minute. A swim's lengths belong to the last lap that starts at or
+  before them.
+
+## Activities
+
+The `Activities` context holds what was recorded. Every function takes the
+scope first, and another user's activity reads as `nil` or is left out.
+
+- **An activity** has its start, its UTC offset and local date, a discipline,
+  the recording's sport and sub-sport, a duration, a distance and, for pool
+  swims, the pool length. It comes from one source file, which it points at
+  with its user, or from a provider with an external id. Parsing a file again
+  updates the activity and replaces its children.
+- **Laps** carry their start, elapsed and moving seconds, distance and average
+  heart rate, power and speed. **Lengths** of a pool swim carry their lap,
+  start, elapsed seconds, whether they were swum or rested, the stroke and the
+  stroke count.
+- **A stream** is one recorded channel with its unit and one sample per elapsed
+  second from the start, `null` where nothing was recorded, so a pause reads as
+  `null`s.
+- **Reads** are the activities with a local date in a range, newest first and
+  optionally of one discipline; one activity with its laps and lengths; the
+  activity of a source file; and chosen streams at a number of seconds per
+  sample, each sample the mean of the window's recorded values, or the first
+  recorded value for position.
+- **A planned session** points at its matched activity with its user, and
+  loses the match when the activity is deleted.
 
 ## Dashboard
 
