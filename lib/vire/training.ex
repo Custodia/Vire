@@ -21,6 +21,7 @@ defmodule Vire.Training do
   alias Vire.Training.Day
   alias Vire.Training.Period
   alias Vire.Training.Phase
+  alias Vire.Training.PlanChange
   alias Vire.Training.Season
   alias Vire.Training.Session
 
@@ -70,27 +71,24 @@ defmodule Vire.Training do
   ## Seasons, phases, blocks and cycles
 
   @doc "Creates a season from a name, a period and a rationale."
-  def create_season(%Scope{user: user}, attrs) do
-    %Season{user_id: user.id}
-    |> Season.changeset(attrs)
-    |> Repo.insert()
+  def create_season(%Scope{user: user} = scope, attrs) do
+    changeset = Season.changeset(%Season{user_id: user.id}, attrs)
+    logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
   end
 
   @doc "Creates a phase in a season from a name, a period and a rationale."
   def create_phase(%Scope{} = scope, season_id, attrs) do
     with {:ok, season} <- fetch_for_write(scope, Season, season_id) do
-      %Phase{user_id: season.user_id, season_id: season.id}
-      |> Phase.changeset(attrs)
-      |> Repo.insert()
+      changeset = Phase.changeset(%Phase{user_id: season.user_id, season_id: season.id}, attrs)
+      logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
     end
   end
 
   @doc "Creates a block in a phase from a focus, a period and a rationale."
   def create_block(%Scope{} = scope, phase_id, attrs) do
     with {:ok, phase} <- fetch_for_write(scope, Phase, phase_id) do
-      %Block{user_id: phase.user_id, phase_id: phase.id}
-      |> Block.changeset(attrs)
-      |> Repo.insert()
+      changeset = Block.changeset(%Block{user_id: phase.user_id, phase_id: phase.id}, attrs)
+      logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
     end
   end
 
@@ -109,7 +107,7 @@ defmodule Vire.Training do
           next_cycle_period(block)
         )
 
-      with_days(fn -> Repo.insert(changeset) end)
+      logged(scope, nil, nil, fn -> changeset |> Repo.insert() |> with_days() end)
     end
   end
 
@@ -137,7 +135,9 @@ defmodule Vire.Training do
         |> Cycle.changeset(attrs)
         |> Constraints.require_rationale(rationale)
 
-      with_days(fn -> update_dropping_days(changeset) end)
+      logged(scope, cycle, rationale, fn ->
+        changeset |> update_dropping_days() |> with_days()
+      end)
     end
   end
 
@@ -163,10 +163,12 @@ defmodule Vire.Training do
         {:error, :not_found}
 
       day ->
-        day
-        |> Day.changeset(attrs)
-        |> Constraints.require_rationale(rationale)
-        |> Repo.update()
+        changeset =
+          day
+          |> Day.changeset(attrs)
+          |> Constraints.require_rationale(rationale)
+
+        logged(scope, day, rationale, fn -> Repo.update(changeset) end)
     end
   end
 
@@ -176,10 +178,12 @@ defmodule Vire.Training do
   training day.
   """
   def create_session(%Scope{user: user} = scope, attrs) do
-    %Session{user_id: user.id}
-    |> Session.changeset(attrs)
-    |> place(scope)
-    |> insert_or_update(&Repo.insert/1)
+    placed =
+      %Session{user_id: user.id}
+      |> Session.changeset(attrs)
+      |> place(scope)
+
+    logged(scope, nil, nil, fn -> write_session(placed, &Repo.insert/1) end)
   end
 
   @doc """
@@ -193,11 +197,13 @@ defmodule Vire.Training do
         {:error, :not_found}
 
       session ->
-        session
-        |> Session.changeset(attrs)
-        |> Constraints.require_rationale(rationale)
-        |> place(scope)
-        |> insert_or_update(&Repo.update/1)
+        placed =
+          session
+          |> Session.changeset(attrs)
+          |> Constraints.require_rationale(rationale)
+          |> place(scope)
+
+        logged(scope, session, rationale, fn -> write_session(placed, &Repo.update/1) end)
     end
   end
 
@@ -205,7 +211,27 @@ defmodule Vire.Training do
   def delete_session(%Scope{} = scope, id, rationale) do
     case session_with_date(scope, id) do
       nil -> {:error, :not_found}
-      session -> delete_row(session, rationale)
+      session -> delete_row(scope, session, rationale)
+    end
+  end
+
+  ## Change log
+
+  @doc """
+  The scope's plan changes, newest first. `filters` may narrow them to an
+  `entity` and an `entity_id`.
+  """
+  def list_changes(%Scope{} = scope, filters \\ []) do
+    filters = Keyword.take(filters, [:entity, :entity_id])
+
+    if Keyword.has_key?(filters, :entity_id) and Ecto.UUID.cast(filters[:entity_id]) == :error do
+      []
+    else
+      PlanChange
+      |> for_user(scope)
+      |> where(^filters)
+      |> order_by(desc: :inserted_at)
+      |> Repo.all()
     end
   end
 
@@ -227,14 +253,12 @@ defmodule Vire.Training do
       else: Period.new(first, Enum.min([sunday, block_period.last], Date))
   end
 
-  defp with_days(write) do
-    Repo.transact(fn ->
-      with {:ok, cycle} <- write.() do
-        add_days(cycle)
-        {:ok, cycle}
-      end
-    end)
+  defp with_days({:ok, cycle}) do
+    add_days(cycle)
+    {:ok, cycle}
   end
+
+  defp with_days(error), do: error
 
   defp update_dropping_days(%Ecto.Changeset{valid?: true, changes: %{period: period}} = changeset) do
     Repo.delete_all(
@@ -264,24 +288,62 @@ defmodule Vire.Training do
 
   defp update_level(scope, schema, id, attrs, rationale) do
     with {:ok, row} <- fetch_for_write(scope, schema, id) do
-      row
-      |> schema.changeset(attrs)
-      |> Constraints.require_rationale(rationale)
-      |> Repo.update()
+      changeset =
+        row
+        |> schema.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+
+      logged(scope, row, rationale, fn -> Repo.update(changeset) end)
     end
   end
 
   defp delete_level(scope, schema, id, rationale) do
     with {:ok, row} <- fetch_for_write(scope, schema, id) do
-      delete_row(row, rationale)
+      delete_row(scope, row, rationale)
     end
   end
 
-  defp delete_row(row, rationale) do
-    row
-    |> Ecto.Changeset.change()
-    |> Constraints.require_rationale(rationale)
-    |> Repo.delete()
+  defp delete_row(scope, row, rationale) do
+    changeset =
+      row
+      |> Ecto.Changeset.change()
+      |> Constraints.require_rationale(rationale)
+
+    logged(scope, row, rationale, fn -> Repo.delete(changeset) end)
+  end
+
+  # Runs a write and records its change in one transaction. An insert's
+  # rationale is the new row's own.
+  defp logged(scope, before, rationale, write) do
+    Repo.transact(fn ->
+      with {:ok, row} <- write.(),
+           {:ok, _change} <- record_change(scope, before, row, rationale) do
+        {:ok, row}
+      end
+    end)
+  end
+
+  defp record_change(%Scope{user: user} = scope, before, row, rationale) do
+    {action, after_row} =
+      cond do
+        row.__meta__.state == :deleted -> {:delete, nil}
+        before -> {:update, row}
+        true -> {:insert, row}
+      end
+
+    %PlanChange{
+      user_id: user.id,
+      entity: PlanChange.entity(row),
+      entity_id: row.id,
+      action: action,
+      before: PlanChange.snapshot(before),
+      after: PlanChange.snapshot(after_row),
+      rationale: if(before, do: rationale, else: row.rationale),
+      channel: scope.channel,
+      mcp_client_id: scope.mcp_client_id
+    }
+    |> PlanChange.changeset()
+    |> Repo.insert()
   end
 
   defp place(changeset, scope) do
@@ -297,13 +359,11 @@ defmodule Vire.Training do
   defp place_on(changeset, %Day{} = day),
     do: {Ecto.Changeset.put_change(changeset, :day_id, day.id), day}
 
-  defp insert_or_update({changeset, day}, write) do
-    Repo.transact(fn ->
-      with {:ok, session} <- write.(changeset),
-           {:ok, _day} <- mark_training(day) do
-        {:ok, session}
-      end
-    end)
+  defp write_session({changeset, day}, write) do
+    with {:ok, session} <- write.(changeset),
+         {:ok, _day} <- mark_training(day) do
+      {:ok, session}
+    end
   end
 
   defp mark_training(nil), do: {:ok, nil}

@@ -10,6 +10,7 @@ defmodule Vire.Training.Period do
 
   use Ecto.Type
 
+  @derive Jason.Encoder
   @enforce_keys [:first, :last]
   defstruct [:first, :last]
 
