@@ -101,6 +101,21 @@ or a delete takes the reason for the change.
   season or for the seasons overlapping a period, and one day with its sessions
   and the chain above it from the `training_day_contexts` view.
 
+## Ingest
+
+The `Ingest` context receives files and turns them into data
+([0007](adr/0007-source-file-storage.md)). Every function takes the scope first,
+and another user's file reads as `nil`.
+
+- **A source file** keeps the bytes of one received file with its kind, a
+  `.fit` file or a nutrition export, its origin, Garmin's API, an upload or MCP,
+  its SHA-256 and its size. Storing bytes the user already has by hash returns
+  the stored file as it stands, and says so. A file is read without its bytes
+  unless they are asked for.
+- **Its status** is pending until a processor reads it, then processed with the
+  processor's version, or failed with the error. Check constraints hold those
+  pairings.
+
 ## Dashboard
 
 A React single-page app under `assets/`, built by Vite into `priv/static`
