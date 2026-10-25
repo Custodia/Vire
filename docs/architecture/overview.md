@@ -81,6 +81,12 @@ or a delete takes the reason for the change.
   period and a day inside its cycle, and stop a parent from shrinking past a
   child. They raise check violations named after the rule, so a breach comes
   back as a changeset error on the period.
+- **Days** come with their cycle: creating a cycle creates one rest day per
+  date in its period, so a user has at most one day per date. A cycle created
+  without a period runs from the day after the block's latest cycle, or from the
+  block's first day, through the following Sunday, and stops at the block's end.
+  Widening a cycle adds rest days for the new dates. Narrowing it removes the
+  days it leaves out, and is refused while one of them holds a session.
 - **Sessions** are created for a date and land on that date's day, which becomes
   a training day. A new date or position moves a session. Its status starts as
   planned and can be set to done or skipped.

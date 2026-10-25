@@ -94,12 +94,22 @@ defmodule Vire.Training do
     end
   end
 
-  @doc "Creates a cycle in a block from a kind, a period and a rationale."
+  @doc """
+  Creates a cycle in a block from a kind, a period and a rationale, with one
+  rest day per date. Without a period the cycle runs from the day after the
+  block's latest cycle, or the block's first day, through the following
+  Sunday, within the block.
+  """
   def create_cycle(%Scope{} = scope, block_id, attrs) do
     with {:ok, block} <- fetch_for_write(scope, Block, block_id) do
-      %Cycle{user_id: block.user_id, block_id: block.id}
-      |> Cycle.changeset(attrs)
-      |> Repo.insert()
+      changeset =
+        Cycle.create_changeset(
+          %Cycle{user_id: block.user_id, block_id: block.id},
+          attrs,
+          next_cycle_period(block)
+        )
+
+      with_days(fn -> Repo.insert(changeset) end)
     end
   end
 
@@ -115,9 +125,21 @@ defmodule Vire.Training do
   def update_block(%Scope{} = scope, id, attrs, rationale),
     do: update_level(scope, Block, id, attrs, rationale)
 
-  @doc "Changes a cycle's kind, period or rationale."
-  def update_cycle(%Scope{} = scope, id, attrs, rationale),
-    do: update_level(scope, Cycle, id, attrs, rationale)
+  @doc """
+  Changes a cycle's kind, period or rationale. A wider period gains a rest day
+  per new date. A narrower one removes the days it leaves out, and is refused
+  while any of them holds a session.
+  """
+  def update_cycle(%Scope{} = scope, id, attrs, rationale) do
+    with {:ok, cycle} <- fetch_for_write(scope, Cycle, id) do
+      changeset =
+        cycle
+        |> Cycle.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+
+      with_days(fn -> update_dropping_days(changeset) end)
+    end
+  end
 
   @doc "Deletes a season and everything beneath it."
   def delete_season(%Scope{} = scope, id, rationale),
@@ -188,6 +210,57 @@ defmodule Vire.Training do
   end
 
   ## Helpers
+
+  defp next_cycle_period(%Block{period: block_period} = block) do
+    latest_end =
+      Repo.one(
+        from c in Cycle,
+          where: c.block_id == ^block.id,
+          select: max(fragment("upper(?)", c.period))
+      )
+
+    first = latest_end || block_period.first
+    sunday = Date.add(first, 7 - Date.day_of_week(first))
+
+    if Date.after?(first, block_period.last),
+      do: nil,
+      else: Period.new(first, Enum.min([sunday, block_period.last], Date))
+  end
+
+  defp with_days(write) do
+    Repo.transact(fn ->
+      with {:ok, cycle} <- write.() do
+        add_days(cycle)
+        {:ok, cycle}
+      end
+    end)
+  end
+
+  defp update_dropping_days(%Ecto.Changeset{valid?: true, changes: %{period: period}} = changeset) do
+    Repo.delete_all(
+      from d in Day,
+        as: :day,
+        where: d.cycle_id == ^changeset.data.id,
+        where: d.day < ^period.first or d.day > ^period.last,
+        where: d.kind == :rest and is_nil(d.note),
+        where: not exists(from s in Session, where: s.day_id == parent_as(:day).id)
+    )
+
+    Repo.update(changeset)
+  end
+
+  defp update_dropping_days(changeset), do: Repo.update(changeset)
+
+  defp add_days(%Cycle{period: period} = cycle) do
+    Repo.insert_all(
+      Day,
+      for date <- Date.range(period.first, period.last) do
+        %{user_id: cycle.user_id, cycle_id: cycle.id, day: date, kind: :rest}
+      end,
+      on_conflict: :nothing,
+      conflict_target: [:user_id, :day]
+    )
+  end
 
   defp update_level(scope, schema, id, attrs, rationale) do
     with {:ok, row} <- fetch_for_write(scope, schema, id) do
