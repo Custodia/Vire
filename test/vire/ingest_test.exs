@@ -1,10 +1,12 @@
 defmodule Vire.IngestTest do
   use Vire.DataCase, async: true
+  use Oban.Testing, repo: Vire.Repo
 
   import Ecto.Query
 
   alias Vire.Accounts.Scope
   alias Vire.Ingest
+  alias Vire.Ingest.ParseWorker
   alias Vire.Ingest.SourceFile
 
   setup do
@@ -62,6 +64,30 @@ defmodule Vire.IngestTest do
       assert {:error, changeset} = Ingest.store_file(scope, "bytes", :gpx, :email)
 
       assert %{kind: ["is invalid"], origin: ["is invalid"]} = errors_on(changeset)
+    end
+  end
+
+  describe "store_fit_file/3" do
+    test "stores a new file with its parse job, and queues nothing for an existing one", %{
+      scope: scope
+    } do
+      content = fit_fixture("swim.fit")
+
+      assert {:stored, file} = Ingest.store_fit_file(scope, content, :upload)
+      assert %SourceFile{kind: :fit, origin: :upload} = file
+      assert [_job] = all_enqueued(worker: ParseWorker, args: %{source_file_id: file.id})
+
+      Oban.drain_queue(queue: :ingest)
+
+      assert {:existing, %SourceFile{id: id}} = Ingest.store_fit_file(scope, content, :mcp)
+      assert id == file.id
+      refute_enqueued(worker: ParseWorker)
+    end
+
+    test "stores nothing and queues nothing when the file is invalid", %{scope: scope} do
+      assert {:error, %Ecto.Changeset{}} = Ingest.store_fit_file(scope, "bytes", :email)
+      assert Repo.aggregate(SourceFile, :count) == 0
+      refute_enqueued(worker: ParseWorker)
     end
   end
 
