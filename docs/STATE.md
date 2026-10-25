@@ -5,8 +5,8 @@ lifecycle: living
 
 # State
 
-Vire is at the earliest stage of implementation. The repository holds
-documentation and no application code.
+Vire is at the earliest stage of implementation. The repository holds a Phoenix
+application with Ecto and Oban, with no features yet.
 
 ## Open questions
 
@@ -34,7 +34,6 @@ common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- Application skeleton and database setup.
 - `.fit` decoding.
 - Upload endpoint and storage of uploaded workouts.
 - MCP endpoint, and the tools that read workout history.
