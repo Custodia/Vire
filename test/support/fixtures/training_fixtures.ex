@@ -1,8 +1,6 @@
 defmodule Vire.TrainingFixtures do
   alias Vire.Accounts.Scope
-  alias Vire.Repo
   alias Vire.Training
-  alias Vire.Training.Day
   alias Vire.Training.Period
 
   def scope_fixture, do: Scope.for_user(Vire.AccountsFixtures.user_fixture())
@@ -64,13 +62,6 @@ defmodule Vire.TrainingFixtures do
           rationale: "First load week"
         })
       )
-
-    Repo.insert_all(
-      Day,
-      for date <- Date.range(cycle.period.first, cycle.period.last) do
-        %{user_id: cycle.user_id, cycle_id: cycle.id, day: date, kind: :rest}
-      end
-    )
 
     cycle
   end

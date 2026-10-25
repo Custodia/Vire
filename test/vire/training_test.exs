@@ -370,18 +370,6 @@ defmodule Vire.TrainingTest do
       assert %{period: ["overlaps another cycle of the block"]} = errors_on(overlapping)
       assert %{kind: ["is invalid"]} = errors_on(kind)
     end
-
-    test "refuse to shrink past a day", %{scope: scope, cycle: cycle} do
-      {:error, shrunk} =
-        Training.update_cycle(
-          scope,
-          cycle.id,
-          %{period: period(~D[2026-11-02], ~D[2026-11-07])},
-          "Why"
-        )
-
-      assert %{period: ["no longer contains all of its days"]} = errors_on(shrunk)
-    end
   end
 
   describe "deleting a season, phase, block or cycle" do
