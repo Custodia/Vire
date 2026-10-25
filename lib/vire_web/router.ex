@@ -25,6 +25,8 @@ defmodule VireWeb.Router do
     pipe_through [:api, :authenticated]
 
     get "/me", MeController, :show
+    post "/uploads", UploadController, :create
+    get "/uploads/:id", UploadController, :show
   end
 
   scope "/api", VireWeb do

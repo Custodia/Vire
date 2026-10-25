@@ -35,6 +35,14 @@ and the endpoint, in that order.
 - **`GET /api/me`** answers with the signed-in user's id, email and name. It
   sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
   request without a signed-in user. `/api/health` and `/api/session` are public.
+- **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
+  20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
+  its parse job enqueued in one transaction; the answer is 201 with the file's
+  id and status. A file the user already has answers 200 with the existing file
+  and enqueues nothing. A missing file or one without a FIT header answers 422.
+  **`GET /api/uploads/:id`** answers the file's status, processor version, error
+  and, once processed, its activity's id. Another user's file answers 404. Both
+  sit behind the `:authenticated` pipeline.
 - **Static files** come from `priv/static`. Files under `/assets` are cached
   indefinitely, because their names carry a hash of their content.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and

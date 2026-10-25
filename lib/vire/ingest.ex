@@ -34,6 +34,30 @@ defmodule Vire.Ingest do
     end
   end
 
+  @doc """
+  Stores `content` as the scope's `.fit` file from `origin` and enqueues its
+  parse, both in one transaction.
+
+  Answers as `store_file/4` does; a file the user already has is not queued.
+  """
+  def store_fit_file(%Scope{} = scope, content, origin) do
+    result =
+      Repo.transact(fn ->
+        with {:stored, file} <- store_file(scope, content, :fit, origin),
+             {:ok, _job} <- enqueue_parse(scope, file) do
+          {:ok, {:stored, file}}
+        else
+          {:existing, file} -> {:ok, {:existing, file}}
+          {:error, reason} -> {:error, reason}
+        end
+      end)
+
+    case result do
+      {:ok, stored} -> stored
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   @doc "The scope's file with `id`, without its content, or `nil`."
   def get_file(%Scope{user: user}, id) do
     case Ecto.UUID.cast(id) do

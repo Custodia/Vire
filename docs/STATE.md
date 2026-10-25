@@ -22,7 +22,6 @@ common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- Upload endpoint and storage of uploaded workouts.
 - MCP endpoint, and the tools that read workout history.
 - MCP tools that write plans, preferences, goals and nutrition logs.
 - Dashboard screens.
