@@ -23,6 +23,7 @@ A record states what is settled. A question still open is named in
 | [0004](0004-dashboard.md) | Dashboard | Accepted |
 | [0005](0005-access.md) | Access | Accepted |
 | [0006](0006-training-plan-storage.md) | Training plan storage | Accepted |
+| [0007](0007-source-file-storage.md) | Source file storage | Accepted |
 
 ## Status
 
