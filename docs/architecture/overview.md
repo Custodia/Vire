@@ -60,6 +60,34 @@ scope ([0005](adr/0005-access.md)).
   that reads or writes a user's data takes the scope as its first argument and
   filters by its user.
 
+## Training
+
+The `Training` context holds the plan. Every function takes the scope first; a
+row of another user reads as `nil` or an empty list, and a write to it fails as
+not found. Every write takes a rationale: a new row keeps its own, and an update
+or a delete takes the reason for the change.
+
+- **The hierarchy** runs season, phase, block, cycle, day, session. Every level
+  above the day has a period, a rationale and its parent, and a child points at
+  its parent together with its user, so it cannot reference another user's row.
+  A day is one date with a kind, training or rest, and a note. A session has a
+  position within its day, a discipline, a structure of steps and targets as
+  JSON, planned seconds, a status and a rationale. Deleting a level deletes
+  everything beneath it.
+- **Periods** are bounded `daterange` columns. The `Period` Ecto type reads and
+  writes them as an inclusive first and last date and stores the half-open range
+  Postgres keeps. Exclusion constraints stop a user's seasons, and the children
+  of one parent, from overlapping. Triggers keep a child inside its parent's
+  period and a day inside its cycle, and stop a parent from shrinking past a
+  child. They raise check violations named after the rule, so a breach comes
+  back as a changeset error on the period.
+- **Sessions** are created for a date and land on that date's day, which becomes
+  a training day. A new date or position moves a session. Its status starts as
+  planned and can be set to done or skipped.
+- **Reads** are the list of seasons, the plan from season to sessions for one
+  season or for the seasons overlapping a period, and one day with its sessions
+  and the chain above it from the `training_day_contexts` view.
+
 ## Dashboard
 
 A React single-page app under `assets/`, built by Vite into `priv/static`

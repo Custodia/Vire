@@ -1,0 +1,306 @@
+defmodule Vire.Training do
+  @moduledoc """
+  The training plan. A season splits into phases, a phase into blocks, a block
+  into cycles, and a cycle into one day per date, which holds the day's
+  sessions.
+
+  Every function takes a scope first and touches only its user's rows. A row
+  of another user reads as `nil` or an empty list and fails a write with
+  `{:error, :not_found}`. Every write takes a rationale: a created row keeps
+  its own in `attrs`, and an update or delete takes the reason for the change
+  as its last argument.
+  """
+
+  import Ecto.Query
+
+  alias Vire.Accounts.Scope
+  alias Vire.Repo
+  alias Vire.Training.Block
+  alias Vire.Training.Constraints
+  alias Vire.Training.Cycle
+  alias Vire.Training.Day
+  alias Vire.Training.Period
+  alias Vire.Training.Phase
+  alias Vire.Training.Season
+  alias Vire.Training.Session
+
+  ## Reads
+
+  @doc "The scope's seasons, earliest first."
+  def list_seasons(%Scope{} = scope) do
+    Season
+    |> for_user(scope)
+    |> order_by(:period)
+    |> Repo.all()
+  end
+
+  @doc """
+  The plan from season down to sessions, each level in date order.
+
+  Given a season id, returns that season with everything beneath it, or `nil`.
+  Given a period, returns the seasons that overlap it, with the phases, blocks,
+  cycles and days beneath them that overlap it too.
+  """
+  def get_plan(%Scope{} = scope, %Period{} = period) do
+    Season
+    |> for_user(scope)
+    |> overlapping(period)
+    |> order_by(:period)
+    |> Repo.all()
+    |> Repo.preload(plan_preloads(scope, period))
+  end
+
+  def get_plan(%Scope{} = scope, season_id) do
+    case fetch(scope, Season, season_id) do
+      nil -> nil
+      season -> Repo.preload(season, plan_preloads(scope, nil))
+    end
+  end
+
+  @doc """
+  The day on `date`, with the cycle, block, phase and season above it as
+  `context` and its sessions in position order, or `nil`.
+  """
+  def get_day(%Scope{} = scope, %Date{} = date) do
+    scope
+    |> day_on(date)
+    |> Repo.preload([:context, sessions: sessions_query(scope)])
+  end
+
+  ## Seasons, phases, blocks and cycles
+
+  @doc "Creates a season from a name, a period and a rationale."
+  def create_season(%Scope{user: user}, attrs) do
+    %Season{user_id: user.id}
+    |> Season.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc "Creates a phase in a season from a name, a period and a rationale."
+  def create_phase(%Scope{} = scope, season_id, attrs) do
+    with {:ok, season} <- fetch_for_write(scope, Season, season_id) do
+      %Phase{user_id: season.user_id, season_id: season.id}
+      |> Phase.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  @doc "Creates a block in a phase from a focus, a period and a rationale."
+  def create_block(%Scope{} = scope, phase_id, attrs) do
+    with {:ok, phase} <- fetch_for_write(scope, Phase, phase_id) do
+      %Block{user_id: phase.user_id, phase_id: phase.id}
+      |> Block.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  @doc "Creates a cycle in a block from a kind, a period and a rationale."
+  def create_cycle(%Scope{} = scope, block_id, attrs) do
+    with {:ok, block} <- fetch_for_write(scope, Block, block_id) do
+      %Cycle{user_id: block.user_id, block_id: block.id}
+      |> Cycle.changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  @doc "Changes a season's name, period or rationale."
+  def update_season(%Scope{} = scope, id, attrs, rationale),
+    do: update_level(scope, Season, id, attrs, rationale)
+
+  @doc "Changes a phase's name, period or rationale."
+  def update_phase(%Scope{} = scope, id, attrs, rationale),
+    do: update_level(scope, Phase, id, attrs, rationale)
+
+  @doc "Changes a block's focus, period or rationale."
+  def update_block(%Scope{} = scope, id, attrs, rationale),
+    do: update_level(scope, Block, id, attrs, rationale)
+
+  @doc "Changes a cycle's kind, period or rationale."
+  def update_cycle(%Scope{} = scope, id, attrs, rationale),
+    do: update_level(scope, Cycle, id, attrs, rationale)
+
+  @doc "Deletes a season and everything beneath it."
+  def delete_season(%Scope{} = scope, id, rationale),
+    do: delete_level(scope, Season, id, rationale)
+
+  @doc "Deletes a phase and everything beneath it."
+  def delete_phase(%Scope{} = scope, id, rationale), do: delete_level(scope, Phase, id, rationale)
+
+  @doc "Deletes a block and everything beneath it."
+  def delete_block(%Scope{} = scope, id, rationale), do: delete_level(scope, Block, id, rationale)
+
+  @doc "Deletes a cycle with its days and their sessions."
+  def delete_cycle(%Scope{} = scope, id, rationale), do: delete_level(scope, Cycle, id, rationale)
+
+  ## Days and sessions
+
+  @doc "Changes the kind or the note of the day on `date`."
+  def update_day(%Scope{} = scope, %Date{} = date, attrs, rationale) do
+    case day_on(scope, date) do
+      nil ->
+        {:error, :not_found}
+
+      day ->
+        day
+        |> Day.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Creates a session on the day of its `date`, from a position, a discipline,
+  its structure, the planned seconds and a rationale. The day becomes a
+  training day.
+  """
+  def create_session(%Scope{user: user} = scope, attrs) do
+    %Session{user_id: user.id}
+    |> Session.changeset(attrs)
+    |> place(scope)
+    |> insert_or_update(&Repo.insert/1)
+  end
+
+  @doc """
+  Changes a session. A new `date` or `position` moves it to that place, and
+  the day it lands on becomes a training day. `status` may be set to `:done`
+  or `:skipped` by hand.
+  """
+  def update_session(%Scope{} = scope, id, attrs, rationale) do
+    case session_with_date(scope, id) do
+      nil ->
+        {:error, :not_found}
+
+      session ->
+        session
+        |> Session.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+        |> place(scope)
+        |> insert_or_update(&Repo.update/1)
+    end
+  end
+
+  @doc "Deletes a session."
+  def delete_session(%Scope{} = scope, id, rationale) do
+    case session_with_date(scope, id) do
+      nil -> {:error, :not_found}
+      session -> delete_row(session, rationale)
+    end
+  end
+
+  ## Helpers
+
+  defp update_level(scope, schema, id, attrs, rationale) do
+    with {:ok, row} <- fetch_for_write(scope, schema, id) do
+      row
+      |> schema.changeset(attrs)
+      |> Constraints.require_rationale(rationale)
+      |> Repo.update()
+    end
+  end
+
+  defp delete_level(scope, schema, id, rationale) do
+    with {:ok, row} <- fetch_for_write(scope, schema, id) do
+      delete_row(row, rationale)
+    end
+  end
+
+  defp delete_row(row, rationale) do
+    row
+    |> Ecto.Changeset.change()
+    |> Constraints.require_rationale(rationale)
+    |> Repo.delete()
+  end
+
+  defp place(changeset, scope) do
+    case Ecto.Changeset.fetch_change(changeset, :date) do
+      {:ok, date} -> place_on(changeset, day_on(scope, date))
+      :error -> {changeset, nil}
+    end
+  end
+
+  defp place_on(changeset, nil),
+    do: {Ecto.Changeset.add_error(changeset, :date, "is not a day in the plan"), nil}
+
+  defp place_on(changeset, %Day{} = day),
+    do: {Ecto.Changeset.put_change(changeset, :day_id, day.id), day}
+
+  defp insert_or_update({changeset, day}, write) do
+    Repo.transact(fn ->
+      with {:ok, session} <- write.(changeset),
+           {:ok, _day} <- mark_training(day) do
+        {:ok, session}
+      end
+    end)
+  end
+
+  defp mark_training(nil), do: {:ok, nil}
+  defp mark_training(%Day{kind: :training} = day), do: {:ok, day}
+
+  defp mark_training(%Day{} = day),
+    do: day |> Ecto.Changeset.change(kind: :training) |> Repo.update()
+
+  defp fetch_for_write(scope, schema, id) do
+    case fetch(scope, schema, id) do
+      nil -> {:error, :not_found}
+      row -> {:ok, row}
+    end
+  end
+
+  defp fetch(scope, schema, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> schema |> for_user(scope) |> Repo.get(uuid)
+      :error -> nil
+    end
+  end
+
+  defp day_on(scope, date), do: Day |> for_user(scope) |> Repo.get_by(day: date)
+
+  defp session_with_date(scope, id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> scope |> sessions_query() |> where([s], s.id == ^uuid) |> Repo.one()
+      :error -> nil
+    end
+  end
+
+  defp sessions_query(scope) do
+    from s in for_user(Session, scope),
+      join: d in assoc(s, :day),
+      order_by: s.position,
+      select: %{s | date: d.day}
+  end
+
+  defp plan_preloads(scope, period) do
+    days =
+      Day
+      |> for_user(scope)
+      |> on_days(period)
+      |> order_by(:day)
+
+    [
+      phases:
+        {level(Phase, scope, period),
+         blocks:
+           {level(Block, scope, period),
+            cycles: {level(Cycle, scope, period), days: {days, sessions: sessions_query(scope)}}}}
+    ]
+  end
+
+  defp level(schema, scope, period) do
+    schema
+    |> for_user(scope)
+    |> overlapping(period)
+    |> order_by(:period)
+  end
+
+  defp overlapping(query, nil), do: query
+
+  defp overlapping(query, %Period{} = period),
+    do: where(query, [row], fragment("? && ?", row.period, type(^period, Period)))
+
+  defp on_days(query, nil), do: query
+
+  defp on_days(query, %Period{first: first, last: last}),
+    do: where(query, [d], d.day >= ^first and d.day <= ^last)
+
+  defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
+end
