@@ -1,0 +1,8 @@
+@import "tailwindcss";
+@import "./tokens.css";
+
+html {
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+  font-variant-numeric: tabular-nums;
+}

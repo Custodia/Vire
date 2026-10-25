@@ -1,0 +1,26 @@
+# Elixir
+/_build/
+/cover/
+/deps/
+/doc/
+/.fetch
+erl_crash.dump
+*.ez
+vire-*.tar
+/tmp/
+.elixir_ls/
+
+# Dashboard build, written by Vite
+/priv/static/
+
+# Node
+node_modules/
+/assets/coverage/
+/e2e/test-results/
+/e2e/playwright-report/
+/e2e/.playwright/
+
+# Personal data
+/fix exports/
+
+.DS_Store
