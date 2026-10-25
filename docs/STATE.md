@@ -13,11 +13,6 @@ React dashboard it serves, with no screens yet.
 
 ## Open questions
 
-**How `.fit` files are decoded.** The parser is third-party. One embedded in the
-application keeps deployment to a single artifact and decodes in-process. One in a
-separate process isolates a crash from the application, and can wrap a vendor SDK,
-which tracks the FIT profile as the vendor revises it.
-
 **How an MCP client is granted access.** An MCP client presents its credential
 with no person present at the moment of the request.
 

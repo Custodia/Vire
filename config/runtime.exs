@@ -44,6 +44,14 @@ if config_env() == :prod do
 
   config :vire, :credential_key, credential_key
 
+  config :vire, Vire.Ingest.Decoder,
+    script:
+      System.get_env("VIRE_DECODER_SCRIPT") ||
+        raise("""
+        environment variable VIRE_DECODER_SCRIPT is missing.
+        It is the path of decode.js in a copy of decoder/ with its packages installed.
+        """)
+
   host = System.get_env("PHX_HOST") || "localhost"
   port = String.to_integer(System.get_env("PORT") || "4000")
 

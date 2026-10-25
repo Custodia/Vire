@@ -22,6 +22,10 @@ config :vire, Oban,
   queues: [default: 10],
   plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7}]
 
+config :vire, Vire.Ingest.Decoder,
+  script: Path.expand("../decoder/decode.js", __DIR__),
+  timeout: 30_000
+
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
