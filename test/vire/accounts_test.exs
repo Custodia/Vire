@@ -58,6 +58,39 @@ defmodule Vire.AccountsTest do
     end
   end
 
+  describe "create_user_with_provider_connection/2" do
+    test "stores the user and the connection together" do
+      {:ok, user} =
+        Accounts.create_user_with_provider_connection(user_attrs(), %{
+          provider: :garmin,
+          credential: "gk_invented"
+        })
+
+      assert Repo.get!(User, user.id)
+
+      assert %ProviderConnection{credential: "gk_invented"} =
+               Repo.get_by!(ProviderConnection, user_id: user.id, provider: :garmin)
+    end
+
+    test "stores neither when the connection is invalid" do
+      attrs = user_attrs()
+
+      {:error, changeset} =
+        Accounts.create_user_with_provider_connection(attrs, %{provider: :strava, credential: "x"})
+
+      assert %{provider: ["is invalid"]} = errors_on(changeset)
+      refute Repo.get_by(User, email: attrs.email)
+    end
+
+    test "stores neither when the user is invalid" do
+      {:error, changeset} =
+        Accounts.create_user_with_provider_connection(%{}, %{provider: :garmin, credential: "x"})
+
+      assert %{email: ["can't be blank"]} = errors_on(changeset)
+      refute Repo.exists?(ProviderConnection)
+    end
+  end
+
   describe "create_provider_connection/2" do
     test "stores the credential encrypted and reads it back in clear" do
       user = user_fixture()
