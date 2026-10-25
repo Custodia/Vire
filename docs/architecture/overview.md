@@ -33,6 +33,18 @@ Oban runs one `default` queue and prunes finished jobs after seven days. Its tab
 come from the first migration. Primary keys default to database-generated UUIDs,
 and timestamps to `timestamptz`.
 
+## Accounts
+
+The `Accounts` context holds users and their provider connections.
+
+- **A user** has an email, unique whatever its case, a name, and a bcrypt hash of
+  their password. The password itself is never stored.
+- **A provider connection** holds one user's credential for one data provider,
+  with Garmin the only provider: its API key, the key's expiry date, and the times
+  of the last sync and of a pause. The key is encrypted with AES-256-GCM under the
+  credential key, with a fresh nonce on every write, and a value that fails
+  authentication does not load. A connection is deleted with its user.
+
 ## Dashboard
 
 A React single-page app under `assets/`, built by Vite into `priv/static`
@@ -49,12 +61,12 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 
 ## Environments
 
-| Environment | Server | Database | Jobs |
-| --- | --- | --- | --- |
-| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running |
-| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode |
-| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running |
-| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running |
+| Environment | Server | Database | Jobs | Credential key |
+| --- | --- | --- | --- | --- |
+| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running | Fixed in `config/dev.exs` |
+| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` |
+| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running | Fixed in `config/test.exs` |
+| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it |
 
 ## Tests
 

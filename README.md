@@ -24,6 +24,10 @@ The dashboard is developed at http://localhost:5173, Vite's dev server, which
 `mix phx.server` starts. It reloads on source edits and proxies `/api` to
 Phoenix.
 
+Provider API keys are encrypted at rest under a 32-byte credential key. Development
+and test carry a fixed key in their config. Production reads it in base64 from
+`VIRE_CREDENTIAL_KEY`; `openssl rand -base64 32` generates one.
+
 Suites:
 
 ```sh
