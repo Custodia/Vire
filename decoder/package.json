@@ -1,0 +1,19 @@
+{
+  "name": "vire-decoder",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "fixtures": "node ../test/support/fixtures/fit/generate.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@garmin/fitsdk": "21.218.0"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10"
+  }
+}
