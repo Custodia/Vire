@@ -1,5 +1,6 @@
 defmodule Vire.AccountsFixtures do
   alias Vire.Accounts
+  alias Vire.Accounts.Scope
 
   def valid_password, do: "correct horse battery"
 
@@ -19,7 +20,7 @@ defmodule Vire.AccountsFixtures do
   def provider_connection_fixture(user, attrs \\ %{}) do
     {:ok, connection} =
       Accounts.create_provider_connection(
-        user,
+        Scope.for_user(user),
         Enum.into(attrs, %{provider: :garmin, credential: "invented-garmin-key"})
       )
 

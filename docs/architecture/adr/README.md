@@ -21,6 +21,7 @@ A record states what is settled. A question still open is named in
 | [0002](0002-backend-stack.md) | Backend stack | Accepted |
 | [0003](0003-testing.md) | Testing approach | Accepted |
 | [0004](0004-dashboard.md) | Dashboard | Accepted |
+| [0005](0005-access.md) | Access | Accepted |
 
 ## Status
 
