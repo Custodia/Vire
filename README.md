@@ -29,9 +29,13 @@ Suites:
 ```sh
 mix precommit                       # compile, format, Credo, ExUnit with coverage
 cd assets && npm run lint && npm run format:check && npm test
+cd e2e && npm ci && npx playwright install chromium   # once
+mix assets.build && cd e2e && npm test               # Playwright against Phoenix on :4002
 ```
 
 ExUnit runs the tests that need the built dashboard only after `mix assets.build`.
+Playwright starts the application itself in the test configuration and reuses a
+server already running on port 4002.
 
 ## Documentation
 

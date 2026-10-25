@@ -61,4 +61,7 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres, and Vitest renders the whole app against the MSW
 handlers in `assets/src/mocks`. Elixir tests tagged `dashboard_build` need the
-built dashboard and are skipped without it.
+built dashboard and are skipped without it. Playwright (`e2e/`, Chromium only)
+opens the built dashboard served by Phoenix against the real database.
+CI runs ExUnit, Vitest and Playwright as separate jobs; the ExUnit and Vitest
+coverage thresholds fail the job when missed.
