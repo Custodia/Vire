@@ -18,7 +18,8 @@ defmodule Vire.MixProject do
           Vire.Schema,
           VireWeb.ConnCase,
           Vire.DataCase,
-          Vire.AccountsFixtures
+          Vire.AccountsFixtures,
+          Vire.TrainingFixtures
         ]
       ]
     ]

@@ -55,10 +55,51 @@ scope ([0005](adr/0005-access.md)).
   of the last sync and of a pause. The key is encrypted with AES-256-GCM under the
   credential key, with a fresh nonce on every write, and a value that fails
   authentication does not load. A connection is deleted with its user.
-- **A scope** carries the signed-in user. Every request under `/api` is assigned
-  one as `current_scope` when its session names an existing user. Every function
-  that reads or writes a user's data takes the scope as its first argument and
-  filters by its user.
+- **A scope** carries the signed-in user and the channel the request came
+  through: the dashboard by default, or MCP with the client's id. Every request
+  under `/api` is assigned one as `current_scope` when its session names an
+  existing user. Every function that reads or writes a user's data takes the
+  scope as its first argument and filters by its user.
+
+## Training
+
+The `Training` context holds the plan ([0006](adr/0006-training-plan-storage.md)).
+Every function takes the scope first; a
+row of another user reads as `nil` or an empty list, and a write to it fails as
+not found. Every write takes a rationale: a new row keeps its own, and an update
+or a delete takes the reason for the change.
+
+- **The hierarchy** runs season, phase, block, cycle, day, session. Every level
+  above the day has a period, a rationale and its parent, and a child points at
+  its parent together with its user, so it cannot reference another user's row.
+  A day is one date with a kind, training or rest, and a note. A session has a
+  position within its day, a discipline, a structure of steps and targets as
+  JSON, planned seconds, a status and a rationale. Deleting a level deletes
+  everything beneath it.
+- **Periods** are bounded `daterange` columns. The `Period` Ecto type reads and
+  writes them as an inclusive first and last date and stores the half-open range
+  Postgres keeps. Exclusion constraints stop a user's seasons, and the children
+  of one parent, from overlapping. Triggers keep a child inside its parent's
+  period and a day inside its cycle, and stop a parent from shrinking past a
+  child. They raise check violations named after the rule, so a breach comes
+  back as a changeset error on the period.
+- **Days** come with their cycle: creating a cycle creates one rest day per
+  date in its period, so a user has at most one day per date. A cycle created
+  without a period runs from the day after the block's latest cycle, or from the
+  block's first day, through the following Sunday, and stops at the block's end.
+  Widening a cycle adds rest days for the new dates. Narrowing it removes the
+  days it leaves out, and is refused while one of them holds a session.
+- **Sessions** are created for a date and land on that date's day, which becomes
+  a training day. A new date or position moves a session. Its status starts as
+  planned and can be set to done or skipped.
+- **The change log** records every write in the same transaction as one row:
+  the entity and its id, insert, update or delete, the row before and after as
+  JSON, the rationale, and the scope's channel and MCP client. A delete's
+  cascade, and the days a cycle gains or loses, fall under the change of the row
+  the caller acted on. Changes list newest first, by entity and id.
+- **Reads** are the list of seasons, the plan from season to sessions for one
+  season or for the seasons overlapping a period, and one day with its sessions
+  and the chain above it from the `training_day_contexts` view.
 
 ## Dashboard
 
