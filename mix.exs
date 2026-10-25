@@ -13,7 +13,13 @@ defmodule Vire.MixProject do
       listeners: [Phoenix.CodeReloader],
       test_coverage: [
         summary: [threshold: 90],
-        ignore_modules: [VireWeb, VireWeb.ConnCase, Vire.DataCase]
+        ignore_modules: [
+          VireWeb,
+          Vire.Schema,
+          VireWeb.ConnCase,
+          Vire.DataCase,
+          Vire.AccountsFixtures
+        ]
       ]
     ]
   end
@@ -43,6 +49,7 @@ defmodule Vire.MixProject do
       {:oban, "~> 2.24"},
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.13"},
+      {:bcrypt_elixir, "~> 3.3"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
