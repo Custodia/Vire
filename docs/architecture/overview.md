@@ -24,6 +24,13 @@ in that order.
 - **`/api`** answers JSON only. `GET /api/health` runs a query against the
   database and answers `{"status": "ok"}`. Any other path under `/api` answers
   a JSON 404.
+- **`POST /api/session`** signs in with a JSON email and password. The right pair
+  answers 200 with the user's id, email and name, in a new session that keeps
+  nothing from the one before. A wrong password and an unknown email both answer
+  401 with the same body, after the same bcrypt work. **`DELETE /api/session`**
+  drops the session and answers 204.
+- **The session** is a cookie, signed and encrypted under the secret key base,
+  HttpOnly, SameSite Lax, and Secure in production. It holds the user's id.
 - **Static files** come from `priv/static`. Files under `/assets` are cached
   indefinitely, because their names carry a hash of their content.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
