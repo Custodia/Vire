@@ -7,7 +7,8 @@ lifecycle: living
 
 Vire is at the earliest stage of implementation. The repository holds a Phoenix
 application with Ecto and Oban, operator-created users who sign in to the API
-with a password, and a React dashboard it serves, with no screens yet.
+with a password, a training plan per user from season to session with every
+change logged, and a React dashboard it serves, with no screens yet.
 
 ## Open questions
 

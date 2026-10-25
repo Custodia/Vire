@@ -55,14 +55,16 @@ scope ([0005](adr/0005-access.md)).
   of the last sync and of a pause. The key is encrypted with AES-256-GCM under the
   credential key, with a fresh nonce on every write, and a value that fails
   authentication does not load. A connection is deleted with its user.
-- **A scope** carries the signed-in user. Every request under `/api` is assigned
-  one as `current_scope` when its session names an existing user. Every function
-  that reads or writes a user's data takes the scope as its first argument and
-  filters by its user.
+- **A scope** carries the signed-in user and the channel the request came
+  through: the dashboard by default, or MCP with the client's id. Every request
+  under `/api` is assigned one as `current_scope` when its session names an
+  existing user. Every function that reads or writes a user's data takes the
+  scope as its first argument and filters by its user.
 
 ## Training
 
-The `Training` context holds the plan. Every function takes the scope first; a
+The `Training` context holds the plan ([0006](adr/0006-training-plan-storage.md)).
+Every function takes the scope first; a
 row of another user reads as `nil` or an empty list, and a write to it fails as
 not found. Every write takes a rationale: a new row keeps its own, and an update
 or a delete takes the reason for the change.
@@ -90,6 +92,11 @@ or a delete takes the reason for the change.
 - **Sessions** are created for a date and land on that date's day, which becomes
   a training day. A new date or position moves a session. Its status starts as
   planned and can be set to done or skipped.
+- **The change log** records every write in the same transaction as one row:
+  the entity and its id, insert, update or delete, the row before and after as
+  JSON, the rationale, and the scope's channel and MCP client. A delete's
+  cascade, and the days a cycle gains or loses, fall under the change of the row
+  the caller acted on. Changes list newest first, by entity and id.
 - **Reads** are the list of seasons, the plan from season to sessions for one
   season or for the seasons overlapping a period, and one day with its sessions
   and the chain above it from the `training_day_contexts` view.
