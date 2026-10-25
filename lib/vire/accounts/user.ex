@@ -36,6 +36,19 @@ defmodule Vire.Accounts.User do
     |> hash_password()
   end
 
+  @doc """
+  Returns `user` when `password` matches their hash, and `nil` otherwise.
+  Without a user it still spends a hash's worth of time.
+  """
+  def verify_password(%__MODULE__{password_hash: hash} = user, password) when is_binary(hash) do
+    if Bcrypt.verify_pass(password, hash), do: user
+  end
+
+  def verify_password(nil, _password) do
+    Bcrypt.no_user_verify()
+    nil
+  end
+
   defp hash_password(%Ecto.Changeset{valid?: true, changes: %{password: password}} = changeset) do
     changeset
     |> put_change(:password_hash, Bcrypt.hash_pwd_salt(password))

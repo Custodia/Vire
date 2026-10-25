@@ -58,6 +58,26 @@ defmodule Vire.AccountsTest do
     end
   end
 
+  describe "get_user_by_email_and_password/2" do
+    test "returns the user for their email, whatever its case, and password" do
+      user = user_fixture(email: "ada@example.com")
+
+      assert %User{id: id} =
+               Accounts.get_user_by_email_and_password("ADA@example.com", valid_password())
+
+      assert id == user.id
+    end
+
+    test "returns nil for a wrong password or an unknown email" do
+      user = user_fixture()
+
+      assert Accounts.get_user_by_email_and_password(user.email, "not the password") == nil
+
+      assert Accounts.get_user_by_email_and_password("nobody@example.com", valid_password()) ==
+               nil
+    end
+  end
+
   describe "create_user_with_provider_connection/2" do
     test "stores the user and the connection together" do
       {:ok, user} =

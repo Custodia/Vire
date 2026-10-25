@@ -16,6 +16,17 @@ defmodule Vire.Accounts do
   end
 
   @doc """
+  Returns the user with `email` when `password` is theirs, and `nil` otherwise.
+  An unknown email costs the same bcrypt work as a wrong password.
+  """
+  def get_user_by_email_and_password(email, password)
+      when is_binary(email) and is_binary(password) do
+    User
+    |> Repo.get_by(email: email)
+    |> User.verify_password(password)
+  end
+
+  @doc """
   Creates a user and their first provider connection in one transaction. Neither
   is stored unless both are valid.
   """
