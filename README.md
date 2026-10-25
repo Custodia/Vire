@@ -11,14 +11,27 @@ Workout files are uploaded to the application, decoded and stored.
 
 ## Development
 
-Prerequisites: Elixir 1.20 on Erlang/OTP 29, and PostgreSQL 16 on localhost:5432
-with user and password `postgres`. Exact versions are in `.tool-versions`.
+Prerequisites: Elixir 1.20 on Erlang/OTP 29, Node 22, and PostgreSQL 16 on
+localhost:5432 with user and password `postgres`. Exact versions are in
+`.tool-versions`.
 
 ```sh
-mix setup              # dependencies and database
-mix phx.server         # http://localhost:4000
-mix precommit          # compile, format, Credo, ExUnit with coverage
+mix setup              # dependencies, database, dashboard install and build
+mix phx.server         # API on http://localhost:4000, which serves the last dashboard build
 ```
+
+The dashboard is developed at http://localhost:5173, Vite's dev server, which
+`mix phx.server` starts. It reloads on source edits and proxies `/api` to
+Phoenix.
+
+Suites:
+
+```sh
+mix precommit                       # compile, format, Credo, ExUnit with coverage
+cd assets && npm run lint && npm run format:check && npm test
+```
+
+ExUnit runs the tests that need the built dashboard only after `mix assets.build`.
 
 ## Documentation
 

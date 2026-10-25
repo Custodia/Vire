@@ -6,7 +6,8 @@ lifecycle: living
 # State
 
 Vire is at the earliest stage of implementation. The repository holds a Phoenix
-application with Ecto and Oban, with no features yet.
+application with Ecto and Oban, and a React dashboard it serves, with no features
+yet.
 
 ## Open questions
 
@@ -21,10 +22,6 @@ storing every upload twice. A database column keeps backup and retention as one
 concern; a filesystem or object store keeps multi-megabyte blobs out of the row
 set.
 
-**How the dashboard is built.** It renders workout data on desktop and mobile
-browsers. A ride records power and heart rate every second across several hours,
-so the series it charts are long.
-
 **How a user proves who they are, and how an MCP client is granted access.** A
 handful of users, across both the dashboard and the MCP server. An MCP client
 presents its credential with no person present at the moment of the request.
@@ -38,6 +35,6 @@ common case. Whether anything else feeds it is undecided.
 - Upload endpoint and storage of uploaded workouts.
 - MCP endpoint, and the tools that read workout history.
 - MCP tools that write plans, preferences, goals and nutrition logs.
-- Web dashboard.
+- Dashboard screens.
 - Authentication.
 - Access control for MCP clients.
