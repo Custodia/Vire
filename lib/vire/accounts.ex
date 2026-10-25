@@ -1,9 +1,13 @@
 defmodule Vire.Accounts do
   @moduledoc """
-  Users, sign-in and the connections that hold each user's provider credentials.
+  Users, sign-in, the connections that hold each user's provider credentials,
+  and the scope every request runs in.
   """
 
+  import Ecto.Query
+
   alias Vire.Accounts.ProviderConnection
+  alias Vire.Accounts.Scope
   alias Vire.Accounts.User
   alias Vire.Repo
 
@@ -14,6 +18,9 @@ defmodule Vire.Accounts do
     # Ecto logs a query's parameters, which here include the password hash.
     |> Repo.insert(log: false)
   end
+
+  @doc "Returns the user with `id`, or `nil`. Builds the scope of a signed-in session."
+  def get_user(id), do: Repo.get(User, id)
 
   @doc """
   Returns the user with `email` when `password` is theirs, and `nil` otherwise.
@@ -33,17 +40,24 @@ defmodule Vire.Accounts do
   def create_user_with_provider_connection(user_attrs, connection_attrs) do
     Repo.transact(fn ->
       with {:ok, user} <- create_user(user_attrs),
-           {:ok, connection} <- create_provider_connection(user, connection_attrs) do
+           {:ok, connection} <- create_provider_connection(Scope.for_user(user), connection_attrs) do
         {:ok, %{user | provider_connections: [connection]}}
       end
     end)
   end
 
-  @doc "Stores a provider connection for `user`, its credential encrypted."
-  def create_provider_connection(%User{} = user, attrs) do
-    %ProviderConnection{user_id: user.id}
+  @doc "Stores a provider connection for the scope's user, its credential encrypted."
+  def create_provider_connection(%Scope{user: %User{id: user_id}}, attrs) do
+    %ProviderConnection{user_id: user_id}
     |> ProviderConnection.create_changeset(attrs)
     # Ecto logs a query's parameters before they are encrypted.
     |> Repo.insert(log: false)
+  end
+
+  @doc "Returns the scope's user's connection to `provider`, or `nil`."
+  def get_provider_connection(%Scope{user: %User{id: user_id}}, provider) do
+    ProviderConnection
+    |> where(user_id: ^user_id, provider: ^provider)
+    |> Repo.one()
   end
 end

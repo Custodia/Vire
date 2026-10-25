@@ -31,6 +31,9 @@ in that order.
   drops the session and answers 204.
 - **The session** is a cookie, signed and encrypted under the secret key base,
   HttpOnly, SameSite Lax, and Secure in production. It holds the user's id.
+- **`GET /api/me`** answers with the signed-in user's id, email and name. It
+  sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
+  request without a signed-in user. `/api/health` and `/api/session` are public.
 - **Static files** come from `priv/static`. Files under `/assets` are cached
   indefinitely, because their names carry a hash of their content.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
@@ -42,7 +45,8 @@ and timestamps to `timestamptz`.
 
 ## Accounts
 
-The `Accounts` context holds users and their provider connections.
+The `Accounts` context holds users, their provider connections and the request
+scope ([0005](adr/0005-access.md)).
 
 - **A user** has an email, unique whatever its case, a name, and a bcrypt hash of
   their password. The password itself is never stored.
@@ -51,6 +55,10 @@ The `Accounts` context holds users and their provider connections.
   of the last sync and of a pause. The key is encrypted with AES-256-GCM under the
   credential key, with a fresh nonce on every write, and a value that fails
   authentication does not load. A connection is deleted with its user.
+- **A scope** carries the signed-in user. Every request under `/api` is assigned
+  one as `current_scope` when its session names an existing user. Every function
+  that reads or writes a user's data takes the scope as its first argument and
+  filters by its user.
 
 ## Dashboard
 

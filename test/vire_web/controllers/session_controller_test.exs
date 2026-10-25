@@ -1,8 +1,6 @@
 defmodule VireWeb.SessionControllerTest do
   use VireWeb.ConnCase, async: true
 
-  import Vire.AccountsFixtures
-
   @invalid %{"errors" => %{"detail" => "Invalid email or password"}}
 
   setup do

@@ -3,6 +3,7 @@ defmodule Vire.AccountsTest do
 
   alias Vire.Accounts
   alias Vire.Accounts.ProviderConnection
+  alias Vire.Accounts.Scope
   alias Vire.Accounts.User
 
   describe "create_user/1" do
@@ -116,7 +117,7 @@ defmodule Vire.AccountsTest do
       user = user_fixture()
 
       {:ok, connection} =
-        Accounts.create_provider_connection(user, %{
+        Accounts.create_provider_connection(Scope.for_user(user), %{
           provider: :garmin,
           credential: "gk_invented_123"
         })
@@ -150,7 +151,8 @@ defmodule Vire.AccountsTest do
     end
 
     test "requires a provider and a credential" do
-      {:error, changeset} = Accounts.create_provider_connection(user_fixture(), %{})
+      {:error, changeset} =
+        Accounts.create_provider_connection(Scope.for_user(user_fixture()), %{})
 
       assert %{provider: ["can't be blank"], credential: ["can't be blank"]} =
                errors_on(changeset)
@@ -161,14 +163,17 @@ defmodule Vire.AccountsTest do
       provider_connection_fixture(user)
 
       {:error, changeset} =
-        Accounts.create_provider_connection(user, %{provider: :garmin, credential: "gk_other"})
+        Accounts.create_provider_connection(Scope.for_user(user), %{
+          provider: :garmin,
+          credential: "gk_other"
+        })
 
       assert %{user_id: ["has already been taken"]} = errors_on(changeset)
     end
 
     test "rejects a user that does not exist" do
       {:error, changeset} =
-        Accounts.create_provider_connection(%User{id: Ecto.UUID.generate()}, %{
+        Accounts.create_provider_connection(Scope.for_user(%User{id: Ecto.UUID.generate()}), %{
           provider: :garmin,
           credential: "gk_invented"
         })
@@ -183,6 +188,35 @@ defmodule Vire.AccountsTest do
       Repo.delete!(user)
 
       refute Repo.get(ProviderConnection, connection.id)
+    end
+  end
+
+  describe "get_provider_connection/2" do
+    test "returns the scope's user's connection and never another user's" do
+      ada = user_fixture()
+      grace = user_fixture()
+      ada_connection = provider_connection_fixture(ada, credential: "gk_ada")
+      provider_connection_fixture(grace, credential: "gk_grace")
+
+      assert %ProviderConnection{id: id, credential: "gk_ada"} =
+               Accounts.get_provider_connection(Scope.for_user(ada), :garmin)
+
+      assert id == ada_connection.id
+    end
+
+    test "returns nil when only another user has a connection" do
+      provider_connection_fixture(user_fixture())
+
+      assert Accounts.get_provider_connection(Scope.for_user(user_fixture()), :garmin) == nil
+    end
+  end
+
+  describe "get_user/1" do
+    test "returns the user with the id, or nil" do
+      user = user_fixture()
+
+      assert Accounts.get_user(user.id).id == user.id
+      assert Accounts.get_user(Ecto.UUID.generate()) == nil
     end
   end
 

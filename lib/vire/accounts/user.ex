@@ -5,6 +5,8 @@ defmodule Vire.Accounts.User do
 
   import Ecto.Changeset
 
+  @type t :: %__MODULE__{}
+
   schema "users" do
     field :email, :string
     field :name, :string
