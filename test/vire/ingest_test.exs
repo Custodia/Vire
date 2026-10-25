@@ -141,4 +141,61 @@ defmodule Vire.IngestTest do
       assert %{sha256: ["must be 32 bytes"]} = errors_on(changeset)
     end
   end
+
+  describe "activity constraints" do
+    setup %{scope: scope} do
+      {:stored, file} = Ingest.store_file(scope, "activity", :fit, :upload)
+      %{source_file: file}
+    end
+
+    defp insert_activity(user_id, source_file_id, provider, external_id) do
+      Repo.query!(
+        "insert into activities (user_id, source_file_id, provider, external_id, started_at,
+           utc_offset_seconds, local_date, discipline, duration_seconds)
+         values ($1, $2, $3, $4, '2026-07-15 02:00:00Z', 0, '2026-07-15', 'run', 60)",
+        [user_id, source_file_id, provider, external_id]
+      )
+    end
+
+    defp violation(fun) do
+      error = assert_raise Postgrex.Error, fn -> Repo.transaction(fun) end
+      {error.postgres.code, error.postgres.constraint}
+    end
+
+    test "a provider and its external id come together", %{scope: scope, source_file: file} do
+      user_id = Ecto.UUID.dump!(scope.user.id)
+      file_id = Ecto.UUID.dump!(file.id)
+
+      assert violation(fn -> insert_activity(user_id, nil, "garmin", nil) end) ==
+               {:check_violation, "activities_provider_with_external_id"}
+
+      assert violation(fn -> insert_activity(user_id, file_id, nil, "123") end) ==
+               {:check_violation, "activities_provider_with_external_id"}
+    end
+
+    test "an activity comes from a file or a provider", %{scope: scope} do
+      user_id = Ecto.UUID.dump!(scope.user.id)
+
+      assert violation(fn -> insert_activity(user_id, nil, nil, nil) end) ==
+               {:check_violation, "activities_from_file_or_provider"}
+    end
+
+    test "a file has one activity", %{scope: scope, source_file: file} do
+      user_id = Ecto.UUID.dump!(scope.user.id)
+      file_id = Ecto.UUID.dump!(file.id)
+      insert_activity(user_id, file_id, nil, nil)
+
+      assert violation(fn -> insert_activity(user_id, file_id, nil, nil) end) ==
+               {:unique_violation, "activities_source_file_id_index"}
+    end
+
+    test "a provider's activity is stored once per user", %{scope: scope} do
+      user_id = Ecto.UUID.dump!(scope.user.id)
+      insert_activity(user_id, nil, "garmin", "123")
+      insert_activity(Ecto.UUID.dump!(user_fixture().id), nil, "garmin", "123")
+
+      assert violation(fn -> insert_activity(user_id, nil, "garmin", "123") end) ==
+               {:unique_violation, "activities_user_id_provider_external_id_index"}
+    end
+  end
 end

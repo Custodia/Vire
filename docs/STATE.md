@@ -8,8 +8,9 @@ lifecycle: living
 Vire is at the earliest stage of implementation. The repository holds a Phoenix
 application with Ecto and Oban, operator-created users who sign in to the API
 with a password, a training plan per user from season to session with every
-change logged, the files each user sends kept once per content hash, and a
-React dashboard it serves, with no screens yet.
+change logged, the files each user sends kept once per content hash and the
+`.fit` files among them parsed into activities with laps, lengths and streams,
+and a React dashboard it serves, with no screens yet.
 
 ## Open questions
 
@@ -21,7 +22,6 @@ common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- `.fit` decoding.
 - Upload endpoint and storage of uploaded workouts.
 - MCP endpoint, and the tools that read workout history.
 - MCP tools that write plans, preferences, goals and nutrition logs.
