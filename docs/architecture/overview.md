@@ -14,13 +14,14 @@ browser ──HTTP──▶ Phoenix endpoint ──▶ /api/*      JSON API
                                    ──▶ /assets/*   built dashboard files
                                    ──▶ /*          dashboard index.html
                   Oban ◀──────────────▶ PostgreSQL ◀── Ecto repo
+                  Oban jobs ──HTTPS──▶ Garmin Personal API
                   FIT decoder ──port──▶ node decoder/decode.js
 ```
 
 ## Server
 
-The supervision tree starts the Ecto repo, the FIT decoder, Oban, Phoenix PubSub
-and the endpoint, in that order.
+The supervision tree starts the Ecto repo, the FIT decoder, the Garmin token
+cache, Oban, Phoenix PubSub and the endpoint, in that order.
 
 - **`/api`** answers JSON only. `GET /api/health` runs a query against the
   database and answers `{"status": "ok"}`. Any other path under `/api` answers
@@ -48,10 +49,11 @@ and the endpoint, in that order.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
   the dashboard's router resolves the path. Without a build the answer is a 503.
 
-Oban runs a `default` queue and an `ingest` queue of two, which parses files, and
-prunes finished jobs after seven days. Its tables
-come from the first migration. Primary keys default to database-generated UUIDs,
-and timestamps to `timestamptz`.
+Oban runs a `default` queue, an `ingest` queue of two, which parses files, and a
+`garmin` queue of one, which makes every call to Garmin. Outside tests its cron
+enqueues the Garmin syncs every three hours, and it prunes finished jobs after
+seven days. Its tables come from the first migration. Primary keys default to
+database-generated UUIDs, and timestamps to `timestamptz`.
 
 ## Accounts
 
@@ -114,9 +116,10 @@ or a delete takes the reason for the change.
 ## Ingest
 
 The `Ingest` context receives files and turns them into data
-([0007](adr/0007-source-file-storage.md)). Every function takes the scope first,
-and another user's file reads as `nil`, except the one that enqueues outdated
-files for every user.
+([0007](adr/0007-source-file-storage.md)), and syncs activities from Garmin
+([0009](adr/0009-garmin-sync.md)). Every function takes the scope first, and
+another user's file reads as `nil`, except the ones that enqueue outdated
+files and scheduled syncs for every user.
 
 - **A source file** keeps the bytes of one received file with its kind, a
   `.fit` file or a nutrition export, its origin, Garmin's API, an upload or MCP,
@@ -152,13 +155,45 @@ files for every user.
   duration is the sessions' timer time. Garmin's sport and sub-sport are kept
   in the FIT profile's snake-case names and map to a discipline: cycling to
   bike, running to run, swimming to swim, training or the strength-training
-  sub-sport to strength, anything else to other. Every numeric record field
-  becomes a stream with the SDK profile's unit, and every numeric developer
-  field one named after its description unless a native field already holds
-  the name. Enhanced speed and altitude stand in for the plain fields, position
-  is in degrees, cadence carries its fractional part, and a run's cadence is in
-  steps per minute. A swim's lengths belong to the last lap that starts at or
+  sub-sport to strength, anything else to other. The same lookup maps Garmin's
+  activity type keys, such as virtual ride or lap swimming. Every numeric
+  record field becomes a stream with the SDK profile's unit, and every numeric
+  developer field one named after its description unless a native field
+  already holds the name. Enhanced speed and altitude stand in for the plain
+  fields, position is in degrees, cadence carries its fractional part, and a
+  run's cadence is in steps per minute. A swim's lengths belong to the last lap that starts at or
   before them.
+- **The Garmin client** acts for one user's provider connection. It exchanges
+  the API key for a bearer token, kept in memory per connection and exchanged
+  again once less than an hour of its 24 remains or after the key changes. A
+  request Garmin answers 401 to is sent once more with a newly exchanged token.
+  It searches activities between two local dates in pages of 99, and
+  downloads an activity's `.fit` file out of Garmin's ZIP. A 429 or 5xx
+  answer, or a request with no answer, is retried up to three times with
+  exponential back-off. The key and the token appear in no log line and no
+  error.
+- **A sync** runs one user's discovery on the `garmin` queue, of every season
+  or of the seasons' dates within a range. It searches each season from its
+  first day to the earlier of its last day and the day after today's UTC
+  date, since Garmin filters on local dates, and stores
+  each summary as an activity. Every activity without a file, except manual
+  ones, gets a download job, each scheduled five seconds after the one before.
+  A run in which every search succeeds records the time on the connection. A
+  key the token endpoint refuses, or a run in which every search fails, pauses
+  the connection and cancels the job; a run with only some searches failing
+  is retried, up to three attempts. One sync per user waits at a time:
+  enqueuing another widens the waiting one to cover both ranges. A sync is
+  enqueued only for a user with an unpaused Garmin connection, by the
+  three-hourly cron for every such user, or on request for one.
+- **A download** fetches one activity's file, stores it as a `.fit` file from
+  Garmin's API, attaches it to the activity and enqueues its parse, in one
+  transaction. A file the user already has is attached as it is; when an
+  activity from an upload already holds it, the Garmin activity's provider
+  fields move to that one and the Garmin activity is deleted. Garmin answering
+  404, or a ZIP without a `.fit` file, cancels the download; other failures
+  are retried, up to five attempts. One download job per activity is kept, so
+  a cancelled or discarded download is not queued again until its job is
+  pruned.
 
 ## Activities
 
@@ -168,8 +203,17 @@ scope first, and another user's activity reads as `nil` or is left out.
 - **An activity** has its start, its UTC offset and local date, a discipline,
   the recording's sport and sub-sport, a duration, a distance and, for pool
   swims, the pool length. It comes from one source file, which it points at
-  with its user, or from a provider with an external id. Parsing a file again
+  with its user, or from a provider with an external id, its training load and
+  the provider's whole summary as JSON, or from both. Parsing a file again
   updates the activity and replaces its children.
+- **One row per activity, whichever side arrives first.** A provider summary
+  updates the activity with its provider and external id, or else attaches to
+  the activity from a file without a provider that started within a minute of
+  it.
+  A parsed file goes to the activity that holds it, or else to the provider
+  activity without a file that started within a minute of it. Only the file
+  sets the recorded fields once it backs the activity; the summary keeps the
+  provider fields. A per-user advisory lock serialises these writes.
 - **Laps** carry their start, elapsed and moving seconds, distance and average
   heart rate, power and speed. **Lengths** of a pool swim carry their lap,
   start, elapsed seconds, whether they were swum or rested, the stroke and the
@@ -201,20 +245,22 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 
 ## Environments
 
-| Environment | Server | Database | Jobs | Credential key | Node |
-| --- | --- | --- | --- | --- | --- |
-| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder |
-| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder |
-| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running | Fixed in `config/test.exs` | The FIT decoder |
-| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it |
+| Environment | Server | Database | Jobs | Credential key | Node | Garmin API |
+| --- | --- | --- | --- | --- | --- | --- |
+| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
+| test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder | `Req.Test` stubs; the base URL is 127.0.0.1:9, where nothing listens |
+| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running, without the cron | Fixed in `config/test.exs` | The FIT decoder | 127.0.0.1:9, where nothing listens |
+| prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running, with the cron | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it | `personal.connectapi.garmin.com` |
 
 ## Tests
 
 Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
-`test/support/fixtures/fit` with the real decoder, and Vitest renders the whole
-app against the MSW handlers in `assets/src/mocks`. Elixir tests tagged
-`dashboard_build` need the built dashboard and are skipped without it.
+`test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
+`Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
+renders the whole app against the MSW handlers in `assets/src/mocks`. Elixir
+tests tagged `dashboard_build` need the built dashboard and are skipped without
+it.
 Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix
 against the real database. CI runs ExUnit, Vitest and Playwright as separate
 jobs; the ExUnit and Vitest coverage thresholds fail the job when missed.

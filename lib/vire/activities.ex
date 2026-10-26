@@ -18,6 +18,7 @@ defmodule Vire.Activities do
 
   @position_channels ["position_lat", "position_long"]
   @insert_chunk 1_000
+  @lock_space 1_098_215_013
 
   @doc """
   The scope's activities with a local date in `dates`, newest first, without
@@ -91,30 +92,126 @@ defmodule Vire.Activities do
   Stores what was parsed from the scope's source file as its activity, laps,
   lengths and streams, in one transaction. Parsing a file again updates its
   activity and replaces the children.
+
+  A file no activity holds yet goes to the scope's provider activity without a
+  file that started within a minute of it, keeping the provider's fields, and
+  otherwise makes a new activity.
   """
   def replace_from_file(
-        %Scope{user: %{id: user_id}},
+        %Scope{user: %{id: user_id}} = scope,
         %SourceFile{user_id: user_id} = file,
         parsed
       ) do
-    changeset =
-      Activity.file_changeset(
-        %Activity{user_id: user_id, source_file_id: file.id},
-        parsed.activity
-      )
-
     Repo.transact(fn ->
-      with {:ok, activity} <-
-             Repo.insert(changeset,
-               on_conflict: {:replace, [:updated_at | Activity.from_file_fields()]},
-               conflict_target: :source_file_id,
-               returning: true
-             ) do
+      lock_activities(user_id)
+
+      activity =
+        Activity |> for_user(scope) |> Repo.get_by(source_file_id: file.id) ||
+          scope |> started_near(parsed.activity.started_at) |> provider_only() |> Repo.one() ||
+          %Activity{user_id: user_id}
+
+      changeset =
+        activity
+        |> Activity.file_changeset(parsed.activity)
+        |> Ecto.Changeset.put_change(:source_file_id, file.id)
+
+      with {:ok, activity} <- Repo.insert_or_update(changeset) do
         replace_children(activity, parsed)
         {:ok, activity}
       end
     end)
   end
+
+  @doc """
+  Stores a provider's summary of one of the scope's activities: `attrs` with
+  the provider, its external id, the start, UTC offset and local date, the
+  discipline, duration, distance, training load and the summary itself.
+
+  The summary updates the activity with its provider and external id. Without
+  one it goes to the scope's activity from a file that has no provider and
+  started within a minute of it, and otherwise makes a new activity.
+  """
+  def upsert_provider_activity(
+        %Scope{user: %{id: user_id}} = scope,
+        %{provider: provider, external_id: external_id, started_at: started_at} = attrs
+      ) do
+    Repo.transact(fn ->
+      lock_activities(user_id)
+
+      activity =
+        Activity |> for_user(scope) |> Repo.get_by(provider: provider, external_id: external_id) ||
+          scope |> started_near(started_at) |> where([a], is_nil(a.provider)) |> Repo.one() ||
+          %Activity{user_id: user_id}
+
+      activity
+      |> Activity.provider_changeset(attrs)
+      |> Repo.insert_or_update()
+    end)
+  end
+
+  @doc """
+  Attaches the scope's source file to the scope's activity that has none.
+
+  When an activity without a provider already holds the file, the activity's
+  provider fields move to that one and the activity is deleted; the answer is
+  the activity that holds the file.
+  """
+  def attach_source_file(
+        %Scope{user: %{id: user_id}} = scope,
+        %Activity{user_id: user_id, id: id},
+        %SourceFile{user_id: user_id} = file
+      ) do
+    Repo.transact(fn ->
+      lock_activities(user_id)
+      holder = Activity |> for_user(scope) |> Repo.get_by(source_file_id: file.id)
+
+      case Activity |> for_user(scope) |> Repo.get(id) do
+        nil -> {:error, :not_found}
+        %Activity{source_file_id: nil} = activity -> attach(activity, holder, file)
+        %Activity{} = activity -> {:ok, activity}
+      end
+    end)
+  end
+
+  defp attach(activity, nil, file),
+    do: activity |> Activity.source_file_changeset(file.id) |> Repo.update()
+
+  defp attach(activity, %Activity{provider: nil} = holder, _file) do
+    Repo.delete!(activity)
+
+    holder
+    |> Activity.provider_changeset(Map.take(activity, Activity.from_provider_fields()))
+    |> Repo.update()
+  end
+
+  defp attach(_activity, %Activity{}, _file), do: {:error, :file_held_by_another_activity}
+
+  defp started_near(scope, started_at) do
+    Activity
+    |> for_user(scope)
+    |> where(
+      [a],
+      a.started_at >= ^DateTime.add(started_at, -60) and
+        a.started_at <= ^DateTime.add(started_at, 60)
+    )
+    |> order_by(
+      [a],
+      fragment(
+        "abs(extract(epoch from ? - ?))",
+        a.started_at,
+        type(^started_at, :utc_datetime_usec)
+      )
+    )
+    |> limit(1)
+  end
+
+  defp provider_only(query),
+    do: where(query, [a], is_nil(a.source_file_id) and not is_nil(a.provider))
+
+  # A parse and a provider summary of the same activity can arrive at once;
+  # the lock keeps them from both inserting it.
+  defp lock_activities(user_id),
+    do: Repo.query!("select pg_advisory_xact_lock(#{@lock_space}, hashtext($1))", [user_id])
 
   defp replace_children(activity, parsed) do
     for schema <- [Lap, Length, ActivityStream] do
