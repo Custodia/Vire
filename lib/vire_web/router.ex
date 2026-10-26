@@ -43,6 +43,7 @@ defmodule VireWeb.Router do
   scope "/", VireWeb do
     get "/mcp", McpController, :method_not_allowed
     delete "/mcp", McpController, :method_not_allowed
+    get "/files/:id", FileController, :show
   end
 
   scope "/api", VireWeb do

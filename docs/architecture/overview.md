@@ -62,6 +62,12 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   not JSON-RPC 2.0 answers 400 with -32600. An `MCP-Protocol-Version` header
   naming an unsupported version answers 400, except on `initialize`. **`GET`
   and `DELETE /mcp`** answer 405.
+- **`GET /files/:id`** serves one source file's bytes to whoever holds a URL
+  signed for it ([0010](adr/0010-mcp-access.md)), with no session or token. A
+  `.fit` file answers as `application/vnd.ant.fit`, any other as
+  `application/octet-stream`, as an attachment named after the file's id and
+  uncached. A missing, altered or expired signature, or a file that is not the
+  signing user's, answers a JSON 404.
 - **The OAuth metadata** for MCP clients ([0010](adr/0010-mcp-access.md)):
   `GET /.well-known/oauth-protected-resource`, also served at
   `/.well-known/oauth-protected-resource/mcp`, names `/mcp` as the resource
@@ -244,6 +250,11 @@ files and scheduled syncs for every user.
   its SHA-256 and its size. Storing bytes the user already has by hash returns
   the stored file as it stands, and says so. A file is read without its bytes
   unless they are asked for.
+- **A signed file URL** names one of the user's files under `/files/:id`
+  with the user's id, an expiry fifteen minutes after it is made, and an
+  HMAC-SHA256 over the file id, the user id and the expiry, keyed by a key
+  derived from the endpoint's secret key base, which production reads from
+  `SECRET_KEY_BASE`. Building one answers the URL and its expiry.
 - **Its status** is pending until a processor reads it, then processed with the
   processor's version, or failed with the error. Check constraints hold those
   pairings.
