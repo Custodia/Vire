@@ -31,12 +31,20 @@ defmodule VireWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
-  plug Plug.Parsers,
-    parsers: [:urlencoded, {:multipart, length: 20_000_000}, :json],
-    pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+  @parsers Plug.Parsers.init(
+             parsers: [:urlencoded, {:multipart, length: 20_000_000}, :json],
+             pass: ["*/*"],
+             json_decoder: Phoenix.json_library()
+           )
+
+  plug :parse_body
 
   plug Plug.Head
   plug Plug.Session, @session_options
   plug VireWeb.Router
+
+  # The MCP endpoint answers a malformed body with a JSON-RPC parse error, so
+  # it reads and decodes its body itself.
+  defp parse_body(%Plug.Conn{path_info: ["mcp"]} = conn, _opts), do: conn
+  defp parse_body(conn, _opts), do: Plug.Parsers.call(conn, @parsers)
 end

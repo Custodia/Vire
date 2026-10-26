@@ -17,6 +17,7 @@ defmodule Vire.MixProject do
           VireWeb,
           Vire.Schema,
           VireWeb.ConnCase,
+          VireWeb.McpClient,
           VireWeb.OAuthFlow,
           Vire.DataCase,
           Vire.AccountsFixtures,
