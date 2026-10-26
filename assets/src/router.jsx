@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-router";
 import { ApiError } from "./api/client.js";
 import { meQuery } from "./api/queries.js";
+import { DayScreen } from "./screens/day.jsx";
 import { ErrorScreen } from "./screens/error.jsx";
 import { PlaceholderScreen } from "./screens/placeholder.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
@@ -54,6 +55,12 @@ const todayRoute = createRoute({
   component: TodayScreen,
 });
 
+const dayRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/days/$date",
+  component: DayScreen,
+});
+
 const sessionRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/sessions/$id",
@@ -69,7 +76,7 @@ const activityRoute = createRoute({
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
-  authenticatedRoute.addChildren([todayRoute, sessionRoute, activityRoute]),
+  authenticatedRoute.addChildren([todayRoute, dayRoute, sessionRoute, activityRoute]),
 ]);
 
 export function createAppRouter({ queryClient, ...options }) {

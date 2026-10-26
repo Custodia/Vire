@@ -41,6 +41,17 @@ export function formatDay(isoDate) {
   return dayLabel.format(new Date(Date.UTC(year, month - 1, day)));
 }
 
+/** The ISO date a number of days after an ISO date, or before it when negative. */
+export function addDays(isoDate, days) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+/** Whether a string is a calendar date written as YYYY-MM-DD. */
+export function isIsoDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && addDays(value, 0) === value;
+}
+
 /** The wall-clock time an activity started where it was recorded, such as 06:32. */
 export function formatStartTime(startedAt, utcOffsetSeconds) {
   return timeOfDay.format(new Date(Date.parse(startedAt) + (utcOffsetSeconds ?? 0) * 1000));

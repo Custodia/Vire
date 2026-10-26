@@ -1,6 +1,13 @@
 import { Link } from "@tanstack/react-router";
 import { discipline as disciplineOf } from "../lib/disciplines.js";
-import { formatClock, formatDistance, formatPlanned, formatStartTime } from "../lib/format.js";
+import {
+  addDays,
+  formatClock,
+  formatDistance,
+  formatPlanned,
+  formatStartTime,
+  localDate,
+} from "../lib/format.js";
 import { Button } from "../ui/Button.jsx";
 import { CoachNote } from "../ui/CoachNote.jsx";
 import { SessionCard } from "../ui/SessionCard.jsx";
@@ -142,6 +149,47 @@ function activityDetail(activity) {
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+const chevrons = { previous: "M15 6l-6 6 6 6", next: "M9 6l6 6-6 6" };
+
+/** Where a date's day is shown: Today for the browser's date, its day screen otherwise. */
+export function dayLink(date) {
+  return date === localDate() ? { to: "/today" } : { to: "/days/$date", params: { date } };
+}
+
+/** Links to the days before and after a date. */
+export function DayLinks({ date }) {
+  return (
+    <nav aria-label="Days" className="flex items-center">
+      <DayLink date={addDays(date, -1)} direction="previous" />
+      <DayLink date={addDays(date, 1)} direction="next" />
+    </nav>
+  );
+}
+
+function DayLink({ date, direction }) {
+  return (
+    <Link
+      {...dayLink(date)}
+      aria-label={direction === "previous" ? "Previous day" : "Next day"}
+      className="focus-ring grid size-11 place-items-center rounded-chip text-ink-muted hover:text-ink"
+    >
+      <svg
+        aria-hidden="true"
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={chevrons[direction]} />
+      </svg>
+    </Link>
+  );
 }
 
 /** A day screen's header: the date over the title, the plan line, and actions. */

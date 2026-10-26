@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dayQuery } from "../api/queries.js";
 import { formatDay, localDate } from "../lib/format.js";
 import { Screen } from "../ui/Screen.jsx";
-import { DayContent, DayHeader } from "./day-view.jsx";
+import { DayContent, DayHeader, DayLinks } from "./day-view.jsx";
 import { SignOutButton } from "./sign-out.jsx";
 
 export function TodayScreen() {
@@ -15,7 +15,12 @@ export function TodayScreen() {
         label={formatDay(date)}
         title="Today"
         data={query.data}
-        actions={<SignOutButton />}
+        actions={
+          <>
+            <DayLinks date={date} />
+            <SignOutButton />
+          </>
+        }
       />
       <DayContent query={query} />
     </Screen>

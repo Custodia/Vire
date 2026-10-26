@@ -13,8 +13,8 @@ change logged, the files each user sends kept once per content hash and the
 each user's Garmin activities inside their seasons synced with their files,
 an MCP endpoint behind an OAuth 2.1 authorization server with tools that read
 and write the plan and read activities and their files,
-and a React dashboard it serves, where a user signs in and sees today's
-sessions.
+and a React dashboard it serves, where a user signs in and sees the sessions
+of today or any other day.
 
 ## Open questions
 
@@ -33,5 +33,5 @@ common case. Whether anything else feeds it is undecided.
 ## To implement
 
 - MCP tools that write preferences, goals and nutrition logs.
-- Dashboard screens for a day, a session, the plan, the season, readiness,
+- Dashboard screens for a session, the plan, the season, readiness,
   nutrition and settings.

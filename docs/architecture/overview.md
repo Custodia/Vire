@@ -405,7 +405,7 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 - **Today** (`/today`) reads `GET /api/days/:date` for the browser's local date
   under the query key `["days", date]`. Its header shows the weekday and date,
   the plan line (phase, block focus, cycle kind and the day's number in the
-  cycle) and the sign-out action. Its sessions section counts the sessions
+  cycle), links to the previous and next day, and the sign-out action. Its sessions section counts the sessions
   done and the planned time, puts the upcoming sessions in a horizontally
   scrolling, scroll-snapping carousel of session cards, the next one first,
   and lists the done and skipped sessions as rows linking to
@@ -413,6 +413,10 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   sessions says none are planned, a date outside the plan says so, and the
   date's unmatched activities are rows linking to
   `/activities/:id`. Those two routes show a placeholder.
+- **A day** (`/days/:date`) shows the same sections for the date in the URL,
+  with the date as its title, links to the previous and next day and a link
+  back to Today. A link to the browser's local date goes to `/today`, and a
+  URL that holds no calendar date says so.
 - Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
   the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
@@ -421,8 +425,8 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   are bundled from fontsource packages.
 - `src/ui/` holds the components screens are built from, one per file: `Stat`,
   `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
-  `SessionCard`, `SessionRow`, `CoachNote`, `Button`, `TextField` and the
-  `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
+  `SessionCard`, `SessionRow`, `CoachNote`, `BackLink`, `Button`, `TextField`
+  and the `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
   wide as their seconds and as tall as their zone, with repeats written out.
 - A web app manifest starts the installed app at `/today`.
 
