@@ -93,4 +93,74 @@ export const sessions = {
   },
 };
 
-export const handlers = [http.get("/api/health", () => HttpResponse.json({ status: "ok" }))];
+export const user = {
+  id: "0b6f1c9e-2d4a-4f7b-9a3c-5e8d7f6a1b20",
+  email: "ada@example.com",
+  name: "Ada Lovelace",
+};
+
+export const password = "correct-horse-battery";
+
+// Whether the browser holds a signed-in session, which tests start with, and
+// the session's CSRF token, which GET /api/csrf hands out and signing in and
+// out end.
+export const mockSession = { signedIn: true, csrfToken: null };
+
+let tokensIssued = 0;
+
+export function resetMocks() {
+  mockSession.signedIn = true;
+  mockSession.csrfToken = null;
+}
+
+const safeMethods = new Set(["GET", "HEAD", "OPTIONS"]);
+
+const refusedToken = () =>
+  HttpResponse.json(
+    {
+      reason: "invalid_csrf_token",
+      errors: { detail: "The request does not carry the session's CSRF token" },
+    },
+    { status: 403 },
+  );
+
+const unauthorized = () =>
+  HttpResponse.json({ errors: { detail: "Unauthorized" } }, { status: 401 });
+
+export const handlers = [
+  // Answers like the :api pipeline: 403 to an unsafe request without the
+  // session's token, and on to the handlers below otherwise.
+  http.all("/api/*", ({ request }) => {
+    if (safeMethods.has(request.method)) return undefined;
+    const token = request.headers.get("x-csrf-token");
+    return token && token === mockSession.csrfToken ? undefined : refusedToken();
+  }),
+
+  http.get("/api/csrf", () => {
+    mockSession.csrfToken ??= `csrf-token-${++tokensIssued}`;
+    return HttpResponse.json({ token: mockSession.csrfToken });
+  }),
+
+  http.get("/api/health", () => HttpResponse.json({ status: "ok" })),
+
+  http.post("/api/session", async ({ request }) => {
+    const body = await request.json();
+    if (body.email?.toLowerCase() !== user.email || body.password !== password) {
+      return HttpResponse.json(
+        { errors: { detail: "Invalid email or password" } },
+        { status: 401 },
+      );
+    }
+    mockSession.signedIn = true;
+    mockSession.csrfToken = null;
+    return HttpResponse.json(user);
+  }),
+
+  http.delete("/api/session", () => {
+    mockSession.signedIn = false;
+    mockSession.csrfToken = null;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get("/api/me", () => (mockSession.signedIn ? HttpResponse.json(user) : unauthorized())),
+];
