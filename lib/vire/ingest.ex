@@ -23,6 +23,7 @@ defmodule Vire.Ingest do
   alias Vire.Ingest.SourceFile
   alias Vire.Ingest.SyncWorker
   alias Vire.Repo
+  alias Vire.Training
   alias Vire.Training.Period
 
   @doc """
@@ -131,10 +132,40 @@ defmodule Vire.Ingest do
   end
 
   @doc """
-  Runs after the scope's activity is stored from a parsed file or a provider
-  summary.
+  Matches the activities on the local date of the scope's activity, just
+  stored from a parsed file or a provider summary, to that day's sessions.
   """
-  def activity_recorded(%Scope{}, %Activity{}), do: :ok
+  def activity_recorded(%Scope{} = scope, %Activity{local_date: date}),
+    do: Training.match_activities(scope, date)
+
+  @doc """
+  Deletes the scope's activities with `ids` with everything read from them,
+  as `Vire.Activities.delete_activities/2` does, and clears the matches of
+  their sessions. Each day that lost an activity is matched again. Answers
+  each deleted activity with the id of the session it was matched to, or
+  `nil`.
+  """
+  def delete_activities(%Scope{} = scope, ids) when is_list(ids) do
+    with {:ok, {activities, released}} <- Repo.transact(fn -> release_and_delete(scope, ids) end) do
+      activities
+      |> Enum.map(& &1.local_date)
+      |> Enum.uniq()
+      |> Enum.each(&Training.match_activities(scope, &1))
+
+      {:ok, Enum.map(activities, &%{activity: &1, session_id: Map.get(released, &1.id)})}
+    end
+  end
+
+  # Deleting an activity clears its session's match but leaves the session
+  # done, so the sessions are released first.
+  defp release_and_delete(scope, ids) do
+    uuids = for id <- ids, {:ok, uuid} <- [Ecto.UUID.cast(id)], do: uuid
+
+    with {:ok, released} <- Training.release_activities(scope, uuids),
+         {:ok, activities} <- Activities.delete_activities(scope, ids) do
+      {:ok, {activities, released}}
+    end
+  end
 
   defp insert_sync(%Scope{user: user}, period) do
     args = sync_args(user, period)
