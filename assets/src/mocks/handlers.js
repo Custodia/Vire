@@ -93,6 +93,69 @@ export const sessions = {
   },
 };
 
+const chain = (dayNumber) => ({
+  season: { id: "9d1e2f30-4a5b-4c6d-8e7f-a0b1c2d3e401", name: "Winter base" },
+  phase: { id: "9d1e2f30-4a5b-4c6d-8e7f-a0b1c2d3e402", name: "Base" },
+  block: { id: "9d1e2f30-4a5b-4c6d-8e7f-a0b1c2d3e403", focus: "Aerobic endurance" },
+  cycle: {
+    id: "9d1e2f30-4a5b-4c6d-8e7f-a0b1c2d3e404",
+    kind: "load",
+    day_number: dayNumber,
+    length: 7,
+  },
+});
+
+export const activities = {
+  walk: {
+    id: "b7a1d2c4-3e5f-4a6b-8c9d-0e1f2a3b4c02",
+    discipline: "other",
+    started_at: "2026-11-03T15:10:00Z",
+    utc_offset_seconds: 7200,
+    duration_seconds: 1500,
+    distance_m: 2400,
+    training_load: null,
+  },
+  run: {
+    id: "b7a1d2c4-3e5f-4a6b-8c9d-0e1f2a3b4c03",
+    discipline: "run",
+    started_at: "2026-12-25T08:05:00Z",
+    utc_offset_seconds: 7200,
+    duration_seconds: 1845,
+    distance_m: 5120,
+    training_load: 31.5,
+  },
+};
+
+// GET /api/days/:date, by date. Any other date lies outside the plan with no
+// activities.
+export const days = {
+  "2026-11-03": {
+    date: "2026-11-03",
+    day: {
+      id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e03",
+      date: "2026-11-03",
+      kind: "training",
+      note: null,
+      chain: chain(2),
+      sessions: [sessions.swim, sessions.strength, sessions.run, sessions.bike],
+    },
+    activities: [activities.walk],
+  },
+  "2026-11-04": {
+    date: "2026-11-04",
+    day: {
+      id: "3c4d5e6f-7a8b-4c9d-8e0f-1a2b3c4d5e04",
+      date: "2026-11-04",
+      kind: "rest",
+      note: "Travel day. Walk the airport, nothing more.",
+      chain: chain(3),
+      sessions: [],
+    },
+    activities: [],
+  },
+  "2026-12-25": { date: "2026-12-25", day: null, activities: [activities.run] },
+};
+
 export const user = {
   id: "0b6f1c9e-2d4a-4f7b-9a3c-5e8d7f6a1b20",
   email: "ada@example.com",
@@ -108,8 +171,13 @@ export function resetMocks() {
   mockSession.signedIn = true;
 }
 
-const unauthorized = () =>
-  HttpResponse.json({ errors: { detail: "Unauthorized" } }, { status: 401 });
+// Answers like the :authenticated pipeline: 401 without a session.
+const signedIn =
+  (resolver) =>
+  (...args) =>
+    mockSession.signedIn
+      ? resolver(...args)
+      : HttpResponse.json({ errors: { detail: "Unauthorized" } }, { status: 401 });
 
 export const handlers = [
   http.get("/api/health", () => HttpResponse.json({ status: "ok" })),
@@ -131,5 +199,15 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
-  http.get("/api/me", () => (mockSession.signedIn ? HttpResponse.json(user) : unauthorized())),
+  http.get(
+    "/api/me",
+    signedIn(() => HttpResponse.json(user)),
+  ),
+
+  http.get(
+    "/api/days/:date",
+    signedIn(({ params }) =>
+      HttpResponse.json(days[params.date] ?? { date: params.date, day: null, activities: [] }),
+    ),
+  ),
 ];

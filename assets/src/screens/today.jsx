@@ -1,25 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client.js";
+import { dayQuery } from "../api/queries.js";
+import { formatDay, localDate } from "../lib/format.js";
+import { Screen } from "../ui/Screen.jsx";
+import { DayContent, DayHeader } from "./day-view.jsx";
 import { SignOutButton } from "./sign-out.jsx";
 
 export function TodayScreen() {
-  const health = useQuery({ queryKey: ["health"], queryFn: () => api("/health") });
+  const date = localDate();
+  const query = useQuery(dayQuery(date));
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-10">
-      <header className="flex items-start justify-between">
-        <h1 className="font-display text-5xl font-semibold uppercase tracking-tight">Vire</h1>
-        <SignOutButton />
-      </header>
-      <p className="mt-2 text-ink-muted">Today</p>
-      <section className="mt-8 rounded-card bg-surface p-5">
-        <h2 className="text-sm uppercase tracking-wide text-ink-muted">Server</h2>
-        <p className="mt-1 text-lg" role="status">
-          {health.isPending && "Checking…"}
-          {health.isError && "Unreachable"}
-          {health.isSuccess && "Connected"}
-        </p>
-      </section>
-    </main>
+    <Screen>
+      <DayHeader
+        label={formatDay(date)}
+        title="Today"
+        data={query.data}
+        actions={<SignOutButton />}
+      />
+      <DayContent query={query} />
+    </Screen>
   );
 }

@@ -8,6 +8,7 @@ import {
 import { ApiError } from "./api/client.js";
 import { meQuery } from "./api/queries.js";
 import { ErrorScreen } from "./screens/error.jsx";
+import { PlaceholderScreen } from "./screens/placeholder.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
 import { TodayScreen } from "./screens/today.jsx";
 
@@ -53,10 +54,22 @@ const todayRoute = createRoute({
   component: TodayScreen,
 });
 
+const sessionRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/sessions/$id",
+  component: () => <PlaceholderScreen title="Session" />,
+});
+
+const activityRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/activities/$id",
+  component: () => <PlaceholderScreen title="Activity" />,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
-  authenticatedRoute.addChildren([todayRoute]),
+  authenticatedRoute.addChildren([todayRoute, sessionRoute, activityRoute]),
 ]);
 
 export function createAppRouter({ queryClient, ...options }) {

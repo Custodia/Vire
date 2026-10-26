@@ -40,3 +40,5 @@ export const signIn = ({ email, password }) =>
   });
 
 export const signOut = () => api("/session", { method: "DELETE" });
+
+export const getDay = (date) => api(`/days/${date}`);

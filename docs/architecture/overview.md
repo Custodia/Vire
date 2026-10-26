@@ -48,6 +48,16 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
   sit behind the `:authenticated` pipeline.
+- **`GET /api/days/:date`** answers one date for the dashboard, behind the
+  `:authenticated` pipeline: `date`; `day`, with its kind, its note, the chain
+  of season, phase, block and cycle above it, the cycle with its kind, the
+  day's number within it and its length, and its sessions in position order,
+  each with its title (the structure's `title`, or the discipline's name),
+  structure, planned seconds, status, rationale and the summary of its matched
+  activity; and `activities`, the summaries of the date's activities no
+  session is matched to. An activity summary is its id, discipline, start, UTC
+  offset, duration, distance and training load. A date outside every cycle
+  answers `day: null`; a malformed date answers 400.
 - **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
   `:mcp` pipeline answers 403 to an `Origin` header naming another host than
   the endpoint's, and then checks the bearer token. Without one it answers 401
@@ -246,8 +256,10 @@ or a delete takes the reason for the change.
   cascade, and the days a cycle gains or loses, fall under the change of the row
   the caller acted on. Changes list newest first, by entity and id.
 - **Reads** are the list of seasons, the plan from season to sessions for one
-  season or for the seasons overlapping a period, and one day with its sessions
-  and the chain above it from the `training_day_contexts` view.
+  season or for the seasons overlapping a period, one day with its cycle, its
+  sessions and the chain above it from the `training_day_contexts` view, and
+  the activities on a local date that no session is matched to, earliest
+  first.
 
 ## Ingest
 
@@ -364,8 +376,8 @@ scope first, and another user's activity reads as `nil` or is left out.
   second from the start, `null` where nothing was recorded, so a pause reads as
   `null`s.
 - **Reads** are the activities with a local date in a range, newest first and
-  optionally of one discipline; one activity with its laps and lengths; the
-  activity of a source file; and chosen streams at a number of seconds per
+  optionally of one discipline; the activities with given ids; one activity
+  with its laps and lengths; the activity of a source file; and chosen streams at a number of seconds per
   sample, each sample the mean of the window's recorded values, or the first
   recorded value for position.
 - **A planned session** points at its matched activity with its user, and
@@ -379,7 +391,9 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 - TanStack Router defines the routes in code. `/` redirects to `/today`.
   `/sign-in` is public; every other route sits behind a guard that asks
   `GET /api/me` once, through a query cached for the life of the page, and
-  sends a 401 to `/sign-in` with the path it came from in `redirect`.
+  sends a 401 to `/sign-in` with the path it came from in `redirect`. Any
+  other request answering 401 means the session has ended: the dashboard goes
+  to `/sign-in` the same way and clears every cached query.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
   A failed query is retried up to three times, and never after a 4xx answer.
@@ -388,6 +402,17 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   path on the same origin, or to `/today`. **Sign-out** posts
   `DELETE /api/session`, clears every cached query and returns to `/sign-in`.
   A route whose data fails to load shows an error with a retry.
+- **Today** (`/today`) reads `GET /api/days/:date` for the browser's local date
+  under the query key `["days", date]`. Its header shows the weekday and date,
+  the plan line (phase, block focus, cycle kind and the day's number in the
+  cycle) and the sign-out action. Its sessions section counts the sessions
+  done and the planned time, puts the upcoming sessions in a horizontally
+  scrolling, scroll-snapping carousel of session cards, the next one first,
+  and lists the done and skipped sessions as rows linking to
+  `/sessions/:id`. A rest day shows the rest state, a training day without
+  sessions says none are planned, a date outside the plan says so, and the
+  date's unmatched activities are rows linking to
+  `/activities/:id`. Those two routes show a placeholder.
 - Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
   the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default

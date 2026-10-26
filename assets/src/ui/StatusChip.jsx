@@ -27,7 +27,7 @@ export function StatusChip({ state }) {
 
   return (
     <span
-      className={`inline-flex flex-none items-center rounded-chip border px-1.5 py-0.5 text-label font-semibold ${className}`}
+      className={`inline-block flex-none rounded-chip whitespace-pre border px-1.5 py-0.5 text-label font-semibold ${className}`}
     >
       {mark && <span aria-hidden="true">{mark}</span>}
       {label}

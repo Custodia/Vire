@@ -58,6 +58,7 @@ defmodule VireWeb.Router do
     pipe_through [:api, :authenticated]
 
     get "/me", MeController, :show
+    get "/days/:date", DayController, :show
     post "/uploads", UploadController, :create
     get "/uploads/:id", UploadController, :show
   end
