@@ -39,9 +39,11 @@ mix vire.create_user --email ada@example.com --name "Ada Lovelace" \
 The password and the Garmin API key go in as shell variables, so neither appears
 in shell history.
 
-`mix vire.seed_e2e` creates the user the Playwright suite signs in as,
-e2e@example.com with the password `e2e-password-1234` and an invented Garmin
-key, unless it exists. Playwright runs it before the server starts.
+`mix vire.seed_e2e` prepares the database the Playwright suite runs against: the
+user e2e@example.com with the password `e2e-password-1234` and an invented Garmin
+key, its Garmin connection unpaused, and an invented plan with sessions on the
+dates of the `.fit` fixtures and today. A second run changes nothing. Playwright
+runs it before the server starts.
 
 Provider API keys are encrypted at rest under a 32-byte credential key. Development
 and test carry a fixed key in their config. Production reads it in base64 from
@@ -57,11 +59,20 @@ mix precommit                       # compile, format, Credo, ExUnit with covera
 cd assets && npm run lint && npm run format:check && npm test
 cd e2e && npm ci && npx playwright install chromium   # once
 mix assets.build && cd e2e && npm test               # Playwright against Phoenix on :4002
+cd e2e && npx playwright test tests/day.spec.js      # one spec
+cd e2e && npx playwright test --project=phone        # one project: phone or desktop
 ```
 
 ExUnit runs the tests that need the built dashboard only after `mix assets.build`.
 Playwright starts the application itself in the test configuration and reuses a
 server already running on port 4002.
+
+The Playwright suite signs in through the form, uploads the `.fit` fixtures
+through the upload dialog, and checks sign-in and sign-out, Today, the day and
+session screens, uploads, Sync now, and an MCP client's OAuth flow ending in tool
+calls. Every spec runs in a phone and a desktop project. The `vire_e2e` database
+is kept between runs, and every spec passes against it whether or not the
+fixtures were uploaded before.
 
 ## Documentation
 
