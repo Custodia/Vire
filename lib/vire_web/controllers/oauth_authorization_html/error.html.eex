@@ -1,0 +1,2 @@
+<h1>This request cannot continue</h1>
+<p><%= @message %></p>
