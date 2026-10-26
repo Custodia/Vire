@@ -204,9 +204,14 @@ or a delete takes the reason for the change.
   above the day has a period, a rationale and its parent, and a child points at
   its parent together with its user, so it cannot reference another user's row.
   A day is one date with a kind, training or rest, and a note. A session has a
-  position within its day, a discipline, a structure of steps and targets as
-  JSON, planned seconds, a status and a rationale. Deleting a level deletes
-  everything beneath it.
+  position within its day, a discipline, a structure as JSON, planned seconds,
+  a status and a rationale. Deleting a level deletes everything beneath it.
+- **A session's structure** may hold `title` and `note` strings and a list of
+  `steps` ([0011](adr/0011-dashboard-design-system.md)). A step has a kind
+  (warmup, work, recovery, cooldown or rest), seconds, and optionally a zone
+  from 1 to 5, a target and a note; a repeat has a count and its own steps.
+  The changeset checks the steps and names the path of the first step at
+  fault; other keys are kept as given.
 - **Periods** are bounded `daterange` columns. The `Period` Ecto type reads and
   writes them as an inclusive first and last date and stores the half-open range
   Postgres keeps. Exclusion constraints stop a user's seasons, and the children
@@ -374,10 +379,17 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 - TanStack Router defines the routes in code. `/` redirects to `/today`.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
-- Tailwind v4 takes its colours, fonts, radii and spacing step from
-  `src/styles/tokens.css`, with Tailwind's default colours, fonts and radii
-  cleared. Text sizes, tracking, weights and container widths come from
-  Tailwind's defaults.
+- Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
+  the boards add to Tailwind's scale from `src/styles/tokens.css`
+  ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
+  colours, fonts and radii cleared. Other text sizes, tracking, weights and
+  container widths come from Tailwind's defaults. Inter and Barlow Condensed
+  are bundled from fontsource packages.
+- `src/ui/` holds the components screens are built from, one per file: `Stat`,
+  `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
+  `SessionCard`, `SessionRow`, `CoachNote`, `Button`, `TextField` and the
+  `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
+  wide as their seconds and as tall as their zone, with repeats written out.
 - A web app manifest starts the installed app at `/today`.
 
 ## Environments

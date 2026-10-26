@@ -1,21 +1,96 @@
-/* Every colour, font, radius and spacing step the dashboard uses. Each one is a
-   custom property on :root and a Tailwind utility. */
+/* Every colour, font, radius and spacing step the dashboard uses, copied from
+   the design canvas in docs/design. Each one is a custom property on :root and
+   a Tailwind utility; Tailwind's own colours, fonts and radii are cleared. */
 @theme static {
   --color-*: initial;
-  --color-ground: #0f1115;
-  --color-surface: #171a20;
-  --color-ink: #eef0f3;
-  --color-muted: #9aa3ad;
-  --color-accent: #c6f135;
+
+  --color-ground: #0d1012;
+  --color-surface: #161a1e;
+  --color-surface-raised: #1c2126;
+  --color-surface-sunken: #111518;
+  --color-track: #232930;
+  --color-border: #252b31;
+  --color-divider: #22282e;
+  --color-border-strong: #2e353c;
+  --color-rule: #3a424a;
+
+  --color-ink: #eef1f3;
+  --color-ink-soft: #c9cfd5;
+  --color-ink-muted: #a0a9b1;
+  --color-ink-faint: #4a535c;
+  --color-ink-inverse: #0d1012;
+
+  --color-accent: #b7f36b;
+  --color-accent-hover: #d4fa9f;
+  --color-accent-tint: #1a2016;
+  --color-caution: #ffb27a;
+
+  --color-discipline-swim: #5db8f5;
+  --color-discipline-swim-soft: #8ccbf7;
+  --color-discipline-swim-tile: #15293a;
+  --color-discipline-swim-tint: #121c25;
+  --color-discipline-swim-edge: #2d4a63;
+  --color-discipline-bike: #f4b740;
+  --color-discipline-bike-soft: #f7cb72;
+  --color-discipline-bike-tile: #2e2410;
+  --color-discipline-bike-tint: #1f1a10;
+  --color-discipline-bike-edge: #6b5a2e;
+  --color-discipline-run: #ee8ab8;
+  --color-discipline-run-soft: #f3afcd;
+  --color-discipline-run-tile: #35202b;
+  --color-discipline-run-tint: #1a1418;
+  --color-discipline-run-edge: #4a2a3a;
+  --color-discipline-strength: #b4a2f5;
+  --color-discipline-strength-soft: #cdbff9;
+  --color-discipline-strength-tile: #262036;
+  --color-discipline-strength-tint: #18161f;
+  --color-discipline-strength-edge: #3a3352;
+  --color-discipline-other: #a0a9b1;
+  --color-discipline-other-soft: #c9cfd5;
+  --color-discipline-other-tile: #1e2328;
+  --color-discipline-other-tint: #161a1e;
+  --color-discipline-other-edge: #2e353c;
+
+  --color-training-zone-1: #8a96a3;
+  --color-training-zone-2: #4fa8f0;
+  --color-training-zone-3: #4fd1a5;
+  --color-training-zone-4: #ffa43a;
+  --color-training-zone-5: #ff5c7a;
+
+  --color-state-done: #b7f36b;
+  --color-state-done-tint: #13261a;
+  --color-state-done-edge: #2f5a2a;
+  --color-state-skipped: #ff9a85;
+  --color-state-skipped-tint: #2b1512;
+  --color-state-skipped-edge: #6a2a22;
+  --color-state-upcoming: #eef1f3;
+  --color-state-upcoming-tint: #1e2328;
+  --color-state-upcoming-edge: #2e353c;
+  --color-state-rest: #a0a9b1;
+  --color-state-rest-tint: #111518;
+  --color-state-rest-edge: #3a424a;
 
   --font-*: initial;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --default-font-family: var(--font-body);
 
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1.4;
+  --text-label--letter-spacing: 0.08em;
+  --text-caption: 0.8125rem;
+  --text-caption--line-height: 1.45;
+  --text-row: 0.9375rem;
+  --text-row--line-height: 1.35;
+  --text-title: 1.75rem;
+  --text-title--line-height: 1.15;
+
   --radius-*: initial;
   --radius-card: 18px;
+  --radius-tile: 12px;
   --radius-chip: 6px;
+  --radius-bar: 3px;
+  --radius-pill: 9999px;
 
   --spacing: 4px;
 }

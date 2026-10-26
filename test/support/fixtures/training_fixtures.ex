@@ -82,7 +82,7 @@ defmodule Vire.TrainingFixtures do
           date: ~D[2026-11-03],
           position: 0,
           discipline: :bike,
-          structure: %{"steps" => [%{"minutes" => 90, "zone" => 2}]},
+          structure: %{"steps" => [%{"kind" => "work", "seconds" => 5400, "zone" => 2}]},
           planned_seconds: 5400,
           rationale: "Endurance ride"
         })

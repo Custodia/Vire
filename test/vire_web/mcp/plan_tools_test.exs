@@ -92,6 +92,20 @@ defmodule VireWeb.Mcp.PlanToolsTest do
 
     create_season = Enum.find(tools, &(&1["name"] == "create_season"))
     assert create_season["inputSchema"]["required"] == ["name", "period", "rationale"]
+
+    create_session = Enum.find(tools, &(&1["name"] == "create_session"))
+    structure = create_session["inputSchema"]["properties"]["structure"]
+
+    assert structure["description"] =~
+             "A step has kind (warmup, work, recovery, cooldown or rest)"
+
+    assert %{
+             "anyOf" => [
+               %{"required" => ["kind", "seconds"]},
+               %{"required" => ["repeat", "steps"]}
+             ]
+           } =
+             structure["properties"]["steps"]["items"]
   end
 
   test "the plan is built, read and changed level by level", %{token: token} do
@@ -177,7 +191,7 @@ defmodule VireWeb.Mcp.PlanToolsTest do
         "date" => "2026-07-14",
         "position" => 0,
         "discipline" => "bike",
-        "structure" => %{"steps" => [%{"minutes" => 10, "zone" => 2}]},
+        "structure" => %{"steps" => [%{"kind" => "work", "seconds" => 600, "zone" => 2}]},
         "planned_seconds" => 600,
         "rationale" => "Short spin"
       })
@@ -303,6 +317,14 @@ defmodule VireWeb.Mcp.PlanToolsTest do
              "discipline" => "run",
              "rationale" => "Holiday run"
            }) == "Invalid arguments: date is not a day in the plan"
+
+    assert error!(token, "create_session", %{
+             "date" => "2026-07-07",
+             "position" => 0,
+             "discipline" => "run",
+             "structure" => %{"steps" => [%{"repeat" => 4, "steps" => [%{"seconds" => 60}]}]},
+             "rationale" => "Strides"
+           }) == "Invalid arguments: structure steps[0].steps[0].kind is required"
 
     assert error!(token, "get_day", %{"date" => "tomorrow"}) ==
              "date must be an ISO 8601 date such as 2026-11-02"
