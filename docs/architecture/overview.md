@@ -183,8 +183,9 @@ files and scheduled syncs for every user.
   the connection and cancels the job; a run with only some searches failing
   is retried, up to three attempts. One sync per user waits at a time:
   enqueuing another widens the waiting one to cover both ranges. A sync is
-  enqueued only for a user with an unpaused Garmin connection, by the
-  three-hourly cron for every such user, or on request for one.
+  enqueued only for a user with an unpaused Garmin connection: by the
+  three-hourly cron for every such user, for the dates of a season created or
+  the dates a season's new period gains, or on request.
 - **A download** fetches one activity's file, stores it as a `.fit` file from
   Garmin's API, attaches it to the activity and enqueues its parse, in one
   transaction. A file the user already has is attached as it is; when an
