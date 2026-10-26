@@ -14,6 +14,7 @@ defmodule Vire.Mcp.PlanTools do
   alias Vire.Mcp.Render
   alias Vire.Mcp.Tool
   alias Vire.Training
+  alias Vire.Training.Structure
 
   @disciplines ["swim", "bike", "run", "strength", "other"]
 
@@ -271,10 +272,52 @@ defmodule Vire.Mcp.PlanTools do
       discipline: enum(@disciplines, "The session's discipline"),
       structure: %{
         type: "object",
-        description: "The session's steps and targets, as any JSON object"
+        description:
+          "The session's plan. title (a string) names the session and note (a string) " <>
+            "describes it in a line; both are shown on the dashboard. steps lists the " <>
+            "session in order. A step has kind (warmup, work, recovery, cooldown or " <>
+            "rest), seconds (a whole number above 0), and optionally zone (1 to 5), " <>
+            "target (a string such as 275–289 W or 4:30 /km) and note (a " <>
+            "string). A step may instead be a repeat: repeat (a count of at least 1) " <>
+            "with its own steps, which may hold repeats too. Other keys are kept as " <>
+            "given.",
+        properties: %{
+          title: %{type: "string"},
+          note: %{type: "string"},
+          steps: %{type: "array", items: step_schema(2)}
+        }
       },
       planned_seconds: integer("The planned duration in seconds", 0)
     }
+  end
+
+  defp step_schema(depth) do
+    single = %{
+      type: "object",
+      properties: %{
+        kind: enum(Structure.kinds(), "What the step is for"),
+        seconds: integer("How long the step lasts", 1),
+        zone: %{type: "integer", minimum: 1, maximum: 5, description: "The training zone"},
+        target: string("The target, such as a power, pace or heart-rate range"),
+        note: string("A cue for the step")
+      },
+      required: ["kind", "seconds"]
+    }
+
+    if depth == 0 do
+      single
+    else
+      repeat = %{
+        type: "object",
+        properties: %{
+          repeat: integer("How many times the steps run", 1),
+          steps: %{type: "array", minItems: 1, items: step_schema(depth - 1)}
+        },
+        required: ["repeat", "steps"]
+      }
+
+      %{anyOf: [single, repeat]}
+    end
   end
 
   defp update_schema(properties) do

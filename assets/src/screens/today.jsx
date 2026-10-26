@@ -1,21 +1,34 @@
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api/client.js";
+import { dayQuery } from "../api/queries.js";
+import { formatDay, localDate } from "../lib/format.js";
+import { Screen } from "../ui/Screen.jsx";
+import { DayContent, DayHeader, DayLinks } from "./day-view.jsx";
+import { SignOutButton } from "./sign-out.jsx";
+import { SyncButton } from "./sync.jsx";
+import { UploadDialog } from "./upload.jsx";
 
 export function TodayScreen() {
-  const health = useQuery({ queryKey: ["health"], queryFn: () => api("/health") });
+  const date = localDate();
+  const query = useQuery(dayQuery(date));
 
   return (
-    <main className="mx-auto max-w-xl px-4 py-10">
-      <h1 className="font-display text-5xl font-semibold uppercase tracking-tight">Vire</h1>
-      <p className="mt-2 text-muted">Today</p>
-      <section className="mt-8 rounded-card bg-surface p-5">
-        <h2 className="text-sm uppercase tracking-wide text-muted">Server</h2>
-        <p className="mt-1 text-lg" role="status">
-          {health.isPending && "Checking…"}
-          {health.isError && "Unreachable"}
-          {health.isSuccess && "Connected"}
-        </p>
-      </section>
-    </main>
+    <Screen>
+      <DayHeader
+        label={formatDay(date)}
+        title="Today"
+        data={query.data}
+        actions={
+          <>
+            <DayLinks date={date} />
+            <SignOutButton />
+          </>
+        }
+      />
+      <div className="flex flex-wrap items-center gap-2">
+        <UploadDialog />
+        <SyncButton />
+      </div>
+      <DayContent query={query} />
+    </Screen>
   );
 }

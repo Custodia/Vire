@@ -63,13 +63,32 @@ defmodule Vire.Training do
   end
 
   @doc """
-  The day on `date`, with the cycle, block, phase and season above it as
-  `context` and its sessions in position order, or `nil`.
+  The day on `date`, with its cycle, the cycle, block, phase and season above
+  it as `context`, and its sessions in position order, or `nil`.
   """
   def get_day(%Scope{} = scope, %Date{} = date) do
     scope
     |> day_on(date)
-    |> Repo.preload([:context, sessions: sessions_query(scope)])
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
+  end
+
+  @doc """
+  The scope's session with `id`, with its date and its day, the day loaded as
+  `get_day/2` loads it without its sessions, or `nil`.
+  """
+  def get_session(%Scope{} = scope, id) do
+    case session_with_date(scope, id) do
+      nil -> nil
+      session -> Repo.preload(session, day: [:cycle, :context])
+    end
+  end
+
+  @doc """
+  The scope's activities on the local `date` that no session is matched to,
+  earliest first.
+  """
+  def list_unmatched_activities(%Scope{} = scope, %Date{} = date) do
+    scope |> unmatched_activities(date) |> Repo.all()
   end
 
   ## Seasons, phases, blocks and cycles

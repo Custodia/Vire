@@ -1,13 +1,45 @@
 import {
-  createRootRoute,
+  createRootRouteWithContext,
   createRoute,
   createRouter,
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { ApiError } from "./api/client.js";
+import { meQuery } from "./api/queries.js";
+import { DayScreen } from "./screens/day.jsx";
+import { ErrorScreen } from "./screens/error.jsx";
+import { ActivityScreen, SessionScreen } from "./screens/session.jsx";
+import { SignInScreen } from "./screens/sign-in.jsx";
 import { TodayScreen } from "./screens/today.jsx";
 
-const rootRoute = createRootRoute({ component: Outlet });
+const rootRoute = createRootRouteWithContext()({
+  component: Outlet,
+  errorComponent: ErrorScreen,
+});
+
+const signInRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/sign-in",
+  validateSearch: (search) => ({ redirect: safeRedirect(search.redirect) }),
+  component: SignInScreen,
+});
+
+const authenticatedRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: "authenticated",
+  beforeLoad: async ({ context, location }) => {
+    try {
+      return { me: await context.queryClient.ensureQueryData(meQuery) };
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        throw redirect({ to: "/sign-in", search: { redirect: location.href } });
+      }
+      throw error;
+    }
+  },
+  component: Outlet,
+});
 
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -18,13 +50,40 @@ const indexRoute = createRoute({
 });
 
 const todayRoute = createRoute({
-  getParentRoute: () => rootRoute,
+  getParentRoute: () => authenticatedRoute,
   path: "/today",
   component: TodayScreen,
 });
 
-export const routeTree = rootRoute.addChildren([indexRoute, todayRoute]);
+const dayRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/days/$date",
+  component: DayScreen,
+});
 
-export function createAppRouter(options = {}) {
-  return createRouter({ routeTree, ...options });
+const sessionRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/sessions/$id",
+  component: SessionScreen,
+});
+
+const activityRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/activities/$id",
+  component: ActivityScreen,
+});
+
+export const routeTree = rootRoute.addChildren([
+  indexRoute,
+  signInRoute,
+  authenticatedRoute.addChildren([todayRoute, dayRoute, sessionRoute, activityRoute]),
+]);
+
+export function createAppRouter({ queryClient, ...options }) {
+  return createRouter({ routeTree, context: { queryClient }, ...options });
+}
+
+// Only a path on this origin is a place to return to after signing in.
+function safeRedirect(value) {
+  return typeof value === "string" && /^\/(?![/\\])/.test(value) ? value : undefined;
 }

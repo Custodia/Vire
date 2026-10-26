@@ -48,6 +48,29 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
   sit behind the `:authenticated` pipeline.
+- **`GET /api/days/:date`** answers one date for the dashboard, behind the
+  `:authenticated` pipeline: `date`; `day`, with its kind, its note, the chain
+  of season, phase, block and cycle above it, the cycle with its kind, the
+  day's number within it and its length, and its sessions in position order,
+  each with its title (the structure's `title`, or the discipline's name),
+  structure, planned seconds, status, rationale and the summary of its matched
+  activity; and `activities`, the summaries of the date's activities no
+  session is matched to. An activity summary is its id, discipline, start, UTC
+  offset, duration, distance and training load. A date outside every cycle
+  answers `day: null`; a malformed date answers 400.
+- **`POST /api/sync`** enqueues a Garmin sync of the user's seasons, behind the
+  `:authenticated` pipeline. It answers 202 with the job's id, or 409 with a
+  `reason` of `not_connected` or `paused` when the user has no unpaused Garmin
+  connection.
+- **`GET /api/sessions/:id`** answers a session as a day lists it, with its
+  day (id, date, kind, note and chain) and its matched activity in full.
+  **`GET /api/activities/:id`** answers an activity in full: its summary, local
+  date, pool length, laps and pool lengths.
+  **`GET /api/activities/:id/streams?channels=&step=`** answers the named
+  channels, or every recorded one, at `step` seconds per sample; a `step` that
+  is not a whole number from 1 answers 400. All three sit behind the
+  `:authenticated` pipeline and answer 404 for another user's session or
+  activity.
 - **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
   `:mcp` pipeline answers 403 to an `Origin` header naming another host than
   the endpoint's, and then checks the bearer token. Without one it answers 401
@@ -204,9 +227,14 @@ or a delete takes the reason for the change.
   above the day has a period, a rationale and its parent, and a child points at
   its parent together with its user, so it cannot reference another user's row.
   A day is one date with a kind, training or rest, and a note. A session has a
-  position within its day, a discipline, a structure of steps and targets as
-  JSON, planned seconds, a status and a rationale. Deleting a level deletes
-  everything beneath it.
+  position within its day, a discipline, a structure as JSON, planned seconds,
+  a status and a rationale. Deleting a level deletes everything beneath it.
+- **A session's structure** may hold `title` and `note` strings and a list of
+  `steps` ([0011](adr/0011-dashboard-design-system.md)). A step has a kind
+  (warmup, work, recovery, cooldown or rest), seconds, and optionally a zone
+  from 1 to 5, a target and a note; a repeat has a count and its own steps.
+  The changeset checks the steps and names the path of the first step at
+  fault; other keys are kept as given.
 - **Periods** are bounded `daterange` columns. The `Period` Ecto type reads and
   writes them as an inclusive first and last date and stores the half-open range
   Postgres keeps. Exclusion constraints stop a user's seasons, and the children
@@ -241,8 +269,10 @@ or a delete takes the reason for the change.
   cascade, and the days a cycle gains or loses, fall under the change of the row
   the caller acted on. Changes list newest first, by entity and id.
 - **Reads** are the list of seasons, the plan from season to sessions for one
-  season or for the seasons overlapping a period, and one day with its sessions
-  and the chain above it from the `training_day_contexts` view.
+  season or for the seasons overlapping a period, one day with its cycle, its
+  sessions and the chain above it from the `training_day_contexts` view, and
+  the activities on a local date that no session is matched to, earliest
+  first.
 
 ## Ingest
 
@@ -359,8 +389,8 @@ scope first, and another user's activity reads as `nil` or is left out.
   second from the start, `null` where nothing was recorded, so a pause reads as
   `null`s.
 - **Reads** are the activities with a local date in a range, newest first and
-  optionally of one discipline; one activity with its laps and lengths; the
-  activity of a source file; and chosen streams at a number of seconds per
+  optionally of one discipline; the activities with given ids; one activity
+  with its laps and lengths; the activity of a source file; and chosen streams at a number of seconds per
   sample, each sample the mean of the window's recorded values, or the first
   recorded value for position.
 - **A planned session** points at its matched activity with its user, and
@@ -372,12 +402,61 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 ([0004](adr/0004-dashboard.md)).
 
 - TanStack Router defines the routes in code. `/` redirects to `/today`.
+  `/sign-in` is public; every other route sits behind a guard that asks
+  `GET /api/me` once, through a query cached for the life of the page, and
+  sends a 401 to `/sign-in` with the path it came from in `redirect`. Any
+  other request answering 401 means the session has ended: the dashboard goes
+  to `/sign-in` the same way and clears every cached query.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
-- Tailwind v4 takes its colours, fonts, radii and spacing step from
-  `src/styles/tokens.css`, with Tailwind's default colours, fonts and radii
-  cleared. Text sizes, tracking, weights and container widths come from
-  Tailwind's defaults.
+  A failed query is retried up to three times, and never after a 4xx answer.
+- **Sign-in** posts the email and password to `POST /api/session`, says so on a
+  401, and on success caches the user and goes to `redirect` when it names a
+  path on the same origin, or to `/today`. **Sign-out** posts
+  `DELETE /api/session`, clears every cached query and returns to `/sign-in`.
+  A route whose data fails to load shows an error with a retry.
+- **Today** (`/today`) reads `GET /api/days/:date` for the browser's local date
+  under the query key `["days", date]`. Its header shows the weekday and date,
+  the plan line (phase, block focus, cycle kind and the day's number in the
+  cycle), links to the previous and next day, and the sign-out action. The
+  Upload and Sync now actions sit under the header. Its sessions section counts
+  the sessions done and the planned time, puts the upcoming sessions in a
+  horizontally scrolling, scroll-snapping carousel of session cards, the next
+  one first, and lists the done and skipped sessions as rows linking to
+  `/sessions/:id`. A rest day shows the rest state, a training day without
+  sessions says none are planned, a date outside the plan says so, and the
+  date's unmatched activities are rows linking to `/activities/:id`.
+- **Upload** opens a dialog that posts a chosen `.fit` file to
+  `POST /api/uploads`, polls `GET /api/uploads/:id` until the file is processed
+  or failed, shows the result with a link to the activity, and on success
+  refreshes the cached days, sessions and activities. **Sync now** posts
+  `POST /api/sync` and shows that a sync was queued or why it was not.
+- **A session** (`/sessions/:id`) reads `GET /api/sessions/:id` and links back
+  to its day. A planned or skipped session shows its state, its stats, its
+  structure as a workout profile with the zone legend and the steps listed,
+  and its rationale. A done session shows planned against actual duration and
+  distance, the matched activity's laps, its pool lengths for a swim, and for
+  a ride or a run a chart of power and heart rate or heart rate and pace. The
+  chart asks `GET /api/activities/:id/streams` for about one sample per two
+  pixels of its width, and uPlot, loaded only where the browser can draw on a
+  canvas, draws it in the token colours. **An activity** (`/activities/:id`)
+  shows an activity without a session the same way, from
+  `GET /api/activities/:id`.
+- **A day** (`/days/:date`) shows the same sections for the date in the URL,
+  with the date as its title, links to the previous and next day and a link
+  back to Today. A link to the browser's local date goes to `/today`, and a
+  URL that holds no calendar date says so.
+- Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
+  the boards add to Tailwind's scale from `src/styles/tokens.css`
+  ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
+  colours, fonts and radii cleared. Other text sizes, tracking, weights and
+  container widths come from Tailwind's defaults. Inter and Barlow Condensed
+  are bundled from fontsource packages.
+- `src/ui/` holds the components screens are built from, one per file: `Stat`,
+  `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
+  `SessionCard`, `SessionRow`, `CoachNote`, `BackLink`, `Button`, `TextField`,
+  `TrainingZoneLegend`, `StreamChart` and the `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
+  wide as their seconds and as tall as their zone, with repeats written out.
 - A web app manifest starts the installed app at `/today`.
 
 ## Environments
@@ -395,7 +474,8 @@ Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
-renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
+renders the whole app against the MSW handlers in `assets/src/mocks`, which
+hold the API's response shapes and whether the browser is signed in. OAuth
 tests register a client and drive the sign-in and consent pages with their
 CSRF tokens checked, as a browser's posts are, and MCP tests call `/mcp` with
 the access token that flow ends in. Elixir
