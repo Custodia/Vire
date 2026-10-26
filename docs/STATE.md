@@ -13,7 +13,7 @@ change logged, the files each user sends kept once per content hash and the
 each user's Garmin activities inside their seasons synced with their files,
 an MCP endpoint behind an OAuth 2.1 authorization server with tools that read
 and write the plan and read activities and their files,
-and a React dashboard it serves, with no screens yet.
+and a React dashboard it serves, where a user signs in.
 
 ## Open questions
 
