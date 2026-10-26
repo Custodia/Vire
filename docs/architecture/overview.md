@@ -167,6 +167,17 @@ and only their SHA-256 is stored.
   structured content and the same JSON as text; `{:error, reason}`, a
   changeset, `:not_found` or a message, gives a result with `isError` and a
   text explaining it. A tool that raises is logged and answers -32603.
+- **The plan tools** call the `Training` and `Ingest` functions:
+  `list_seasons`; `get_plan` for one season or for the seasons overlapping a
+  period; `get_day` with the day's chain, its sessions with their status and
+  match, and every activity recorded on that date; creating, changing and
+  deleting seasons, phases, blocks and cycles; `update_day`; creating,
+  changing and deleting sessions; `match_session`; and `sync_now`. Dates are
+  ISO 8601 strings, ids are UUID strings, and a period is an object of an
+  inclusive `first` and `last` date. Every write requires a `rationale`: a new
+  row keeps it as its own, and a change or a delete logs it as the reason. A
+  call leaving out an argument its schema requires is an error result naming
+  it.
 
 ## Training
 

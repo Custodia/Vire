@@ -26,15 +26,30 @@ defmodule Vire.Mcp.Tool do
   def describe(%__MODULE__{} = tool),
     do: %{name: tool.name, description: tool.description, inputSchema: tool.input_schema}
 
-  @doc "Runs the tool and answers its `tools/call` result."
-  def call(%__MODULE__{function: function}, %Scope{} = scope, arguments) do
-    case function.(scope, arguments) do
+  @doc """
+  Runs the tool and answers its `tools/call` result. Arguments its schema
+  requires and the call leaves out fail the call without running it.
+  """
+  def call(%__MODULE__{function: function} = tool, %Scope{} = scope, arguments) do
+    result =
+      case missing(tool, arguments) do
+        [] -> function.(scope, arguments)
+        names -> {:error, "Missing arguments: " <> Enum.join(names, ", ")}
+      end
+
+    case result do
       {:ok, data} when is_map(data) ->
         %{content: [text(Jason.encode!(data))], structuredContent: data}
 
       {:error, reason} ->
         %{content: [text(explain(reason))], isError: true}
     end
+  end
+
+  defp missing(%__MODULE__{input_schema: schema}, arguments) do
+    schema
+    |> Map.get(:required, [])
+    |> Enum.reject(&Map.has_key?(arguments, &1))
   end
 
   defp text(text), do: %{type: "text", text: text}
