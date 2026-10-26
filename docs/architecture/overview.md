@@ -104,6 +104,18 @@ or a delete takes the reason for the change.
 - **Sessions** are created for a date and land on that date's day, which becomes
   a training day. A new date or position moves a session. Its status starts as
   planned and can be set to done or skipped.
+- **Matching** pairs one local date's activities with its sessions, after a
+  parse stores an activity and after a Garmin summary is stored. For each
+  discipline, the day's unmatched activities by start time pair one to one
+  with its unmatched sessions by position when their counts are equal; when
+  they differ, none of that discipline is matched. A match makes the session
+  done and writes no change. A match by hand sets or clears a session's
+  activity, which must be the user's and on the session's date, makes it done
+  or planned, and is logged; automatic matching leaves such a session out. At
+  the end of a sync, sessions still planned on a date it covered before the
+  day before today's UTC date, a date past in every time zone, are marked
+  skipped, and a later match makes them done. A per-user advisory
+  lock serialises matching.
 - **The change log** records every write in the same transaction as one row:
   the entity and its id, insert, update or delete, the row before and after as
   JSON, the rationale, and the scope's channel and MCP client. A delete's

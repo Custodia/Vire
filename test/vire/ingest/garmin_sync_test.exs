@@ -19,6 +19,7 @@ defmodule Vire.Ingest.GarminSyncTest do
   alias Vire.Ingest.SourceFile
   alias Vire.Ingest.SyncScheduler
   alias Vire.Ingest.SyncWorker
+  alias Vire.Training.Session
 
   @token_path "/personalapitoken-service/personal-api/personal-api-key/token"
   @search_path "/activitylist-service/activities/search/activities"
@@ -461,6 +462,65 @@ defmodule Vire.Ingest.GarminSyncTest do
       assert %{success: 1} = sync(context.user)
 
       assert [_one] = all_enqueued(worker: DownloadWorker)
+    end
+  end
+
+  describe "matching" do
+    setup %{scope: scope} do
+      season = Repo.one!(Vire.Training.Season)
+      phase = phase_fixture(scope, season, %{period: period(~D[2026-07-01], ~D[2026-07-31])})
+      block = block_fixture(scope, phase, %{period: period(~D[2026-07-01], ~D[2026-07-31])})
+      cycle_fixture(scope, block, %{period: period(~D[2026-07-13], ~D[2026-07-19])})
+
+      %{
+        ride: session_fixture(scope, %{date: ~D[2026-07-14], discipline: :bike}),
+        run: session_fixture(scope, %{date: ~D[2026-07-17], discipline: :run})
+      }
+    end
+
+    test "matches a summary to its session and marks the missed one skipped", context do
+      stub_garmin([ride_summary()])
+
+      assert %{success: 1} = sync(context.user)
+
+      [ride] = activities()
+      assert %Session{activity_id: ride_id, status: :done} = Repo.reload!(context.ride)
+      assert ride_id == ride.id
+      assert %Session{activity_id: nil, status: :skipped} = Repo.reload!(context.run)
+    end
+
+    test "leaves a session planned until the day before today's UTC date has passed",
+         context do
+      stub_garmin([ride_summary()])
+
+      assert :ok = GarminSync.run(context.scope, context.connection, nil, ~D[2026-07-18])
+      assert %Session{status: :planned} = Repo.reload!(context.run)
+
+      assert :ok = GarminSync.run(context.scope, context.connection, nil, ~D[2026-07-19])
+      assert %Session{status: :skipped} = Repo.reload!(context.run)
+    end
+
+    test "returns a skipped session to done when its activity arrives later", context do
+      stub_garmin([ride_summary()])
+      assert %{success: 1} = sync(context.user)
+
+      late_run = summary(7_000_003, ~U[2026-07-17 06:00:00Z], 0, "running")
+      stub_garmin([ride_summary(), late_run])
+      assert %{success: 1} = sync(context.user)
+
+      assert %Session{status: :done, activity_id: run_id} = Repo.reload!(context.run)
+      assert Repo.get!(Activity, run_id).external_id == "7000003"
+    end
+
+    test "matches an uploaded file once it is parsed", context do
+      {:stored, _file} = Ingest.store_fit_file(context.scope, fit_fixture("ride.fit"), :upload)
+
+      assert %{success: 1} = Oban.drain_queue(queue: :ingest)
+
+      [ride] = activities()
+      assert %Session{activity_id: ride_id, status: :done} = Repo.reload!(context.ride)
+      assert ride_id == ride.id
+      assert %Session{status: :planned} = Repo.reload!(context.run)
     end
   end
 

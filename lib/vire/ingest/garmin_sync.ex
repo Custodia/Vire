@@ -61,7 +61,9 @@ defmodule Vire.Ingest.GarminSync do
 
   @doc """
   Searches Garmin for the dates `periods/3` gives and stores every summary
-  found. After every search succeeds the connection records the sync.
+  found. After every search succeeds, the sessions still planned within
+  those dates on a date before the day before `today`, the UTC date, are
+  marked skipped, and the connection records the sync.
 
   A key the token endpoint refuses, or a run in which every search fails,
   pauses the connection and answers `{:cancel, reason}`. A run in which only
@@ -83,7 +85,7 @@ defmodule Vire.Ingest.GarminSync do
 
     cond do
       errors == [] ->
-        finish(scope, connection, periods)
+        finish(scope, connection, periods, today)
 
       refused ->
         pause(scope, connection, "Garmin refused the API key with status #{refused}")
@@ -201,7 +203,9 @@ defmodule Vire.Ingest.GarminSync do
     end)
   end
 
-  defp finish(scope, connection, _periods) do
+  defp finish(scope, connection, periods, today) do
+    # West of UTC the local date can still be the day before the UTC one.
+    Training.skip_missed_sessions(scope, periods, Date.add(today, -1))
     {:ok, _connection} = Accounts.mark_provider_connection_synced(scope, connection)
     :ok
   end
