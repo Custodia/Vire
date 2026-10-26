@@ -29,3 +29,14 @@ async function decode(response) {
   }
   return (await response.text()) || null;
 }
+
+export const getMe = () => api("/me");
+
+export const signIn = ({ email, password }) =>
+  api("/session", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+
+export const signOut = () => api("/session", { method: "DELETE" });

@@ -93,4 +93,43 @@ export const sessions = {
   },
 };
 
-export const handlers = [http.get("/api/health", () => HttpResponse.json({ status: "ok" }))];
+export const user = {
+  id: "0b6f1c9e-2d4a-4f7b-9a3c-5e8d7f6a1b20",
+  email: "ada@example.com",
+  name: "Ada Lovelace",
+};
+
+export const password = "correct-horse-battery";
+
+// Whether the browser holds a signed-in session. Tests start signed in.
+export const mockSession = { signedIn: true };
+
+export function resetMocks() {
+  mockSession.signedIn = true;
+}
+
+const unauthorized = () =>
+  HttpResponse.json({ errors: { detail: "Unauthorized" } }, { status: 401 });
+
+export const handlers = [
+  http.get("/api/health", () => HttpResponse.json({ status: "ok" })),
+
+  http.post("/api/session", async ({ request }) => {
+    const body = await request.json();
+    if (body.email?.toLowerCase() !== user.email || body.password !== password) {
+      return HttpResponse.json(
+        { errors: { detail: "Invalid email or password" } },
+        { status: 401 },
+      );
+    }
+    mockSession.signedIn = true;
+    return HttpResponse.json(user);
+  }),
+
+  http.delete("/api/session", () => {
+    mockSession.signedIn = false;
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.get("/api/me", () => (mockSession.signedIn ? HttpResponse.json(user) : unauthorized())),
+];

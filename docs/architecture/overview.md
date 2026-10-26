@@ -377,8 +377,17 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 ([0004](adr/0004-dashboard.md)).
 
 - TanStack Router defines the routes in code. `/` redirects to `/today`.
+  `/sign-in` is public; every other route sits behind a guard that asks
+  `GET /api/me` once, through a query cached for the life of the page, and
+  sends a 401 to `/sign-in` with the path it came from in `redirect`.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
+  A failed query is retried up to three times, and never after a 4xx answer.
+- **Sign-in** posts the email and password to `POST /api/session`, says so on a
+  401, and on success caches the user and goes to `redirect` when it names a
+  path on the same origin, or to `/today`. **Sign-out** posts
+  `DELETE /api/session`, clears every cached query and returns to `/sign-in`.
+  A route whose data fails to load shows an error with a retry.
 - Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
   the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
@@ -407,7 +416,8 @@ Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
-renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
+renders the whole app against the MSW handlers in `assets/src/mocks`, which
+hold the API's response shapes and whether the browser is signed in. OAuth
 tests register a client and drive the sign-in and consent pages with their
 CSRF tokens checked, as a browser's posts are, and MCP tests call `/mcp` with
 the access token that flow ends in. Elixir
