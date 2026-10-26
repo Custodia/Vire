@@ -4,19 +4,27 @@ defmodule Vire.Ingest do
   activities. Every file is kept byte for byte, once per user: a file whose
   SHA-256 the user already has is not stored again.
 
-  Every function but `reparse_outdated/0` takes a scope first and touches only
-  its user's files.
+  Activities and their files also arrive from Garmin, through a sync per user
+  bounded by the user's seasons.
+
+  Every function but `reparse_outdated/0` and `enqueue_scheduled_syncs/0`
+  takes a scope first and touches only its user's files.
   """
 
   import Ecto.Query
 
+  alias Vire.Accounts
   alias Vire.Accounts.Scope
   alias Vire.Activities
+  alias Vire.Activities.Activity
   alias Vire.Ingest.Decoder
   alias Vire.Ingest.FitActivity
   alias Vire.Ingest.ParseWorker
   alias Vire.Ingest.SourceFile
+  alias Vire.Ingest.SyncWorker
   alias Vire.Repo
+  alias Vire.Training
+  alias Vire.Training.Period
 
   @doc """
   Stores `content` for the scope's user as a file of `kind` from `origin`.
@@ -94,6 +102,102 @@ defmodule Vire.Ingest do
   end
 
   @doc """
+  Enqueues a Garmin sync of the user's seasons, of the dates in `period` only
+  when one is given, for a user with an unpaused Garmin connection.
+
+  While a sync of the user waits, enqueuing another widens the waiting one to
+  cover both, and returns it.
+  """
+  @spec enqueue_sync(Scope.t(), Period.t() | nil) ::
+          {:ok, Oban.Job.t()} | {:error, :not_connected | :paused | term()}
+  def enqueue_sync(%Scope{} = scope, period \\ nil) do
+    case Accounts.get_provider_connection(scope, :garmin) do
+      nil -> {:error, :not_connected}
+      %{paused_at: %DateTime{}} -> {:error, :paused}
+      _connection -> insert_sync(scope, period)
+    end
+  end
+
+  @doc "Enqueues a Garmin sync of every season of the scope's user, and returns the job."
+  def sync_now(%Scope{} = scope), do: enqueue_sync(scope)
+
+  @doc """
+  Enqueues a sync for every user with an unpaused Garmin connection. Returns
+  the number of syncs enqueued.
+  """
+  def enqueue_scheduled_syncs do
+    :garmin
+    |> Accounts.list_unpaused_provider_connections()
+    |> Enum.count(&match?({:ok, _job}, insert_sync(Scope.for_user(&1.user), nil)))
+  end
+
+  @doc """
+  Matches the activities on the local date of the scope's activity, just
+  stored from a parsed file or a provider summary, to that day's sessions.
+  """
+  def activity_recorded(%Scope{} = scope, %Activity{local_date: date}),
+    do: Training.match_activities(scope, date)
+
+  defp insert_sync(%Scope{user: user}, period) do
+    args = sync_args(user, period)
+
+    Repo.transact(fn ->
+      case Oban.insert(SyncWorker.new(args)) do
+        {:ok, %Oban.Job{conflict?: true, id: id} = job} when not is_nil(id) -> widen(job, args)
+        other -> other
+      end
+    end)
+  end
+
+  defp sync_args(user, nil), do: %{"user_id" => user.id, "first" => nil, "last" => nil}
+
+  defp sync_args(user, %Period{first: first, last: last}),
+    do: %{
+      "user_id" => user.id,
+      "first" => Date.to_iso8601(first),
+      "last" => Date.to_iso8601(last)
+    }
+
+  defp widen(%Oban.Job{args: waiting} = job, args) do
+    widened =
+      case {waiting, args} do
+        {%{"first" => nil}, _} ->
+          waiting
+
+        {_, %{"first" => nil}} ->
+          args
+
+        _both_bounded ->
+          %{
+            args
+            | "first" => min(waiting["first"], args["first"]),
+              "last" => max(waiting["last"], args["last"])
+          }
+      end
+
+    if widened == waiting do
+      {:ok, job}
+    else
+      replace_waiting_args(job, widened, args)
+    end
+  end
+
+  # The waiting job may start between the conflict and this update; it then
+  # runs with its old args, and a new job covers the requested range.
+  defp replace_waiting_args(%Oban.Job{id: id} = job, widened, args) do
+    {updated, _jobs} =
+      Oban.Job
+      |> where(id: ^id)
+      |> where([j], j.state in ["available", "scheduled", "retryable"])
+      |> Repo.update_all(set: [args: widened])
+
+    case updated do
+      1 -> {:ok, %{job | args: widened}}
+      0 -> Oban.insert(SyncWorker.new(args))
+    end
+  end
+
+  @doc """
   Decodes the scope's file with `id` and stores its activity, laps, lengths
   and streams, marking the file processed in the same transaction.
 
@@ -112,8 +216,8 @@ defmodule Vire.Ingest do
   defp parse(scope, file) do
     with {:ok, decoded} <- decode(file),
          {:ok, parsed} <- FitActivity.from_decoded(decoded),
-         {:ok, _activity} <- store_parsed(scope, file, parsed) do
-      :ok
+         {:ok, activity} <- store_parsed(scope, file, parsed) do
+      activity_recorded(scope, activity)
     else
       {:error, {:decoder, reason}} ->
         mark_failed(file, "the decoder did not answer: #{inspect(reason)}")

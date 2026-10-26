@@ -8,6 +8,7 @@ defmodule Vire.Application do
     children = [
       Vire.Repo,
       Vire.Ingest.Decoder,
+      Vire.Ingest.Garmin.TokenCache,
       {Oban, Application.fetch_env!(:vire, Oban)},
       {Phoenix.PubSub, name: Vire.PubSub},
       VireWeb.Endpoint
