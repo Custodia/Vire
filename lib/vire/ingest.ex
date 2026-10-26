@@ -7,12 +7,14 @@ defmodule Vire.Ingest do
   Activities and their files also arrive from Garmin, through a sync per user
   bounded by the user's seasons.
 
-  Every function but `reparse_outdated/0` and `enqueue_scheduled_syncs/0`
-  takes a scope first and touches only its user's files.
+  Every function but `reparse_outdated/0`, `enqueue_scheduled_syncs/0` and
+  `fetch_signed_file/3`, which takes its user from a signed URL, takes a scope
+  first and touches only its user's files.
   """
 
   import Ecto.Query
 
+  alias Plug.Crypto.KeyGenerator
   alias Vire.Accounts
   alias Vire.Accounts.Scope
   alias Vire.Activities
@@ -25,6 +27,8 @@ defmodule Vire.Ingest do
   alias Vire.Repo
   alias Vire.Training
   alias Vire.Training.Period
+
+  @file_url_seconds 15 * 60
 
   @doc """
   Stores `content` for the scope's user as a file of `kind` from `origin`.
@@ -72,6 +76,69 @@ defmodule Vire.Ingest do
       {:ok, uuid} -> SourceFile |> where(user_id: ^user.id) |> Repo.get(uuid)
       :error -> nil
     end
+  end
+
+  @doc """
+  A URL that downloads the scope's `file` with no session or token, and the
+  time it expires, fifteen minutes after `now`. The URL carries the user, the
+  expiry and an HMAC over the file id, the user id and the expiry, keyed from
+  the endpoint's secret key base.
+  """
+  def signed_file_url(
+        %Scope{user: %{id: user_id}},
+        %SourceFile{user_id: user_id} = file,
+        now \\ DateTime.utc_now()
+      ) do
+    expires_at = now |> DateTime.add(@file_url_seconds) |> DateTime.truncate(:second)
+    expires = DateTime.to_unix(expires_at)
+
+    query =
+      URI.encode_query(%{
+        "user" => user_id,
+        "expires" => expires,
+        "signature" => file_signature(file.id, user_id, expires)
+      })
+
+    {VireWeb.Endpoint.url() <> "/files/#{file.id}?" <> query, expires_at}
+  end
+
+  @doc """
+  The file with `id`, with its content, that a URL from `signed_file_url/3`
+  names in `params`, or `nil` when the signature does not match, the URL has
+  expired or the file is not the user's.
+  """
+  def fetch_signed_file(id, params, now \\ DateTime.utc_now())
+
+  def fetch_signed_file(
+        id,
+        %{"user" => user_id, "expires" => expires, "signature" => signature},
+        now
+      )
+      when is_binary(id) and is_binary(user_id) and is_binary(expires) and is_binary(signature) do
+    with {expires, ""} <- Integer.parse(expires),
+         true <- expires > DateTime.to_unix(now),
+         true <- Plug.Crypto.secure_compare(signature, file_signature(id, user_id, expires)),
+         {:ok, id} <- Ecto.UUID.cast(id),
+         {:ok, user_id} <- Ecto.UUID.cast(user_id) do
+      file_with_content(user_id, id)
+    else
+      _invalid -> nil
+    end
+  end
+
+  def fetch_signed_file(_id, _params, _now), do: nil
+
+  defp file_signature(id, user_id, expires) do
+    key =
+      KeyGenerator.generate(
+        VireWeb.Endpoint.config(:secret_key_base),
+        "source file url",
+        cache: Plug.Keys
+      )
+
+    :hmac
+    |> :crypto.mac(:sha256, key, Enum.join([id, user_id, expires], "|"))
+    |> Base.url_encode64(padding: false)
   end
 
   @doc """
@@ -271,9 +338,11 @@ defmodule Vire.Ingest do
   defp set_status(file, attrs),
     do: %{file | content: nil} |> SourceFile.status_changeset(attrs) |> Repo.update()
 
-  defp get_file_with_content(%Scope{user: user}, id) do
+  defp get_file_with_content(%Scope{user: user}, id), do: file_with_content(user.id, id)
+
+  defp file_with_content(user_id, id) do
     SourceFile
-    |> where(user_id: ^user.id, id: ^id)
+    |> where(user_id: ^user_id, id: ^id)
     |> select_merge([f], %{content: f.content})
     |> Repo.one()
   end
