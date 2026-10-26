@@ -23,6 +23,7 @@ defmodule Vire.Ingest do
   alias Vire.Ingest.SourceFile
   alias Vire.Ingest.SyncWorker
   alias Vire.Repo
+  alias Vire.Training
   alias Vire.Training.Period
 
   @doc """
@@ -131,10 +132,11 @@ defmodule Vire.Ingest do
   end
 
   @doc """
-  Runs after the scope's activity is stored from a parsed file or a provider
-  summary.
+  Matches the activities on the local date of the scope's activity, just
+  stored from a parsed file or a provider summary, to that day's sessions.
   """
-  def activity_recorded(%Scope{}, %Activity{}), do: :ok
+  def activity_recorded(%Scope{} = scope, %Activity{local_date: date}),
+    do: Training.match_activities(scope, date)
 
   defp insert_sync(%Scope{user: user}, period) do
     args = sync_args(user, period)

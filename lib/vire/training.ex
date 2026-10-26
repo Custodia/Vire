@@ -14,17 +14,21 @@ defmodule Vire.Training do
   import Ecto.Query
 
   alias Vire.Accounts.Scope
+  alias Vire.Activities.Activity
   alias Vire.Ingest
   alias Vire.Repo
   alias Vire.Training.Block
   alias Vire.Training.Constraints
   alias Vire.Training.Cycle
   alias Vire.Training.Day
+  alias Vire.Training.Matcher
   alias Vire.Training.Period
   alias Vire.Training.Phase
   alias Vire.Training.PlanChange
   alias Vire.Training.Season
   alias Vire.Training.Session
+
+  @match_lock_space 1_098_215_014
 
   ## Reads
 
@@ -237,6 +241,58 @@ defmodule Vire.Training do
     end
   end
 
+  ## Matching
+
+  @doc """
+  Matches the scope's activities on the local `date` to that day's sessions.
+
+  The day's unmatched activities are scored against its unmatched sessions by
+  `Vire.Training.Matcher`, and each pair it is sure of is matched, which makes
+  the session done. A skipped session, and one whose match was set or cleared
+  by hand, is left out. Automatic matches are not logged.
+  """
+  def match_activities(%Scope{user: user} = scope, %Date{} = date) do
+    {:ok, _paired} =
+      Repo.transact(fn ->
+        lock_matching(user.id)
+
+        sessions = scope |> unmatched_sessions(date) |> Repo.all()
+        activities = scope |> unmatched_activities(date) |> Repo.all()
+
+        paired =
+          activities
+          |> Matcher.score(sessions)
+          |> Matcher.pairs()
+          |> Enum.map(&match_pair(&1, sessions))
+
+        {:ok, paired}
+      end)
+
+    :ok
+  end
+
+  @doc """
+  Matches the scope's session with `session_id` to the scope's activity with
+  `activity_id` on the session's date, making it done, or clears its match
+  with `nil`, making it planned. The change is logged with `rationale`.
+
+  An activity on another date is refused with `{:error, :different_date}`.
+  """
+  def match_session(%Scope{user: user} = scope, session_id, activity_id, rationale) do
+    with %Session{} = session <- session_with_date(scope, session_id) || {:error, :not_found},
+         {:ok, activity_id} <- activity_on(scope, session.date, activity_id) do
+      changeset =
+        session
+        |> Session.match_changeset(activity_id)
+        |> Constraints.require_rationale(rationale)
+
+      logged(scope, session, rationale, fn ->
+        lock_matching(user.id)
+        Repo.update(changeset)
+      end)
+    end
+  end
+
   ## Change log
 
   @doc """
@@ -258,6 +314,52 @@ defmodule Vire.Training do
   end
 
   ## Helpers
+
+  defp match_pair(%{session_id: id, activity_id: activity_id}, sessions) do
+    sessions
+    |> Enum.find(&(&1.id == id))
+    |> Session.match_changeset(activity_id)
+    |> Repo.update!()
+  end
+
+  defp unmatched_activities(scope, date) do
+    from a in for_user(Activity, scope),
+      as: :activity,
+      where: a.local_date == ^date,
+      where: not exists(from s in Session, where: s.activity_id == parent_as(:activity).id),
+      order_by: [a.started_at, a.id]
+  end
+
+  defp unmatched_sessions(%Scope{user: user} = scope, date) do
+    matched_by_hand =
+      from c in PlanChange,
+        where: c.user_id == ^user.id and c.entity == :training_session and c.action == :update,
+        where: c.entity_id == parent_as(:session).id,
+        where: fragment("?->'activity_id' is distinct from ?->'activity_id'", c.before, c.after)
+
+    from s in for_user(Session, scope),
+      as: :session,
+      join: d in assoc(s, :day),
+      where: d.day == ^date and is_nil(s.activity_id) and s.status != :skipped,
+      where: not exists(matched_by_hand),
+      order_by: s.position
+  end
+
+  defp activity_on(_scope, _date, nil), do: {:ok, nil}
+
+  defp activity_on(scope, date, activity_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(activity_id),
+         %Activity{local_date: local_date} <- Activity |> for_user(scope) |> Repo.get(uuid) do
+      if local_date == date, do: {:ok, uuid}, else: {:error, :different_date}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  # A parse, a provider summary and a hand match can reach the same day at
+  # once; the lock keeps them from pairing one activity twice.
+  defp lock_matching(user_id),
+    do: Repo.query!("select pg_advisory_xact_lock(#{@match_lock_space}, hashtext($1))", [user_id])
 
   defp update_widening(scope, season, changeset) do
     with {:ok, updated} <- Repo.update(changeset) do
