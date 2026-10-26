@@ -11,6 +11,8 @@ defmodule VireWeb.ConnCase do
       import Phoenix.ConnTest
       import Vire.AccountsFixtures
       import VireWeb.ConnCase, only: [sign_in: 2]
+      import VireWeb.McpClient
+      import VireWeb.OAuthFlow
     end
   end
 
