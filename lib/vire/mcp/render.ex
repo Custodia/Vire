@@ -2,7 +2,7 @@ defmodule Vire.Mcp.Render do
   @moduledoc """
   The JSON objects tools answer with: plan rows from season to session, each
   with its rationale and with the levels beneath it when they were loaded,
-  and activities.
+  and activities with their laps and lengths.
   """
 
   alias Vire.Activities.Activity
@@ -83,6 +83,42 @@ defmodule Vire.Mcp.Render do
 
   @doc "An activity's summary, without its laps, lengths or provider summary."
   def activity(%Activity{} = activity), do: Map.take(activity, @activity_fields)
+
+  @doc "An activity's summary with its laps, lengths and provider summary."
+  def activity_detail(%Activity{} = activity) do
+    activity
+    |> activity()
+    |> Map.merge(%{
+      provider_summary: activity.provider_summary,
+      laps:
+        Enum.map(
+          activity.laps,
+          &Map.take(&1, [
+            :lap_index,
+            :started_at,
+            :elapsed_seconds,
+            :moving_seconds,
+            :distance_m,
+            :avg_heart_rate,
+            :avg_power,
+            :avg_speed_mps
+          ])
+        ),
+      lengths:
+        Enum.map(
+          activity.lengths,
+          &Map.take(&1, [
+            :length_index,
+            :lap_index,
+            :started_at,
+            :elapsed_seconds,
+            :active,
+            :stroke,
+            :strokes
+          ])
+        )
+    })
+  end
 
   defp chain(%DayContext{} = context) do
     %{

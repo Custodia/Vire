@@ -184,6 +184,13 @@ and only their SHA-256 is stored.
   row keeps it as its own, and a change or a delete logs it as the reason. A
   call leaving out an argument its schema requires is an error result naming
   it.
+- **The activity tools** call the `Activities` and `Ingest` functions:
+  `list_activities` for the summaries in a period, optionally of one
+  discipline; `get_activity` with its laps, lengths and the provider's
+  summary; `get_activity_streams` for chosen channels, or every recorded one,
+  at a number of seconds per sample; and `get_activity_file`, which answers a
+  signed URL for the activity's original file with its expiry, the file's size
+  and its SHA-256 in hex.
 
 ## Training
 

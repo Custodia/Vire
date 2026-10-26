@@ -12,7 +12,7 @@ change logged, the files each user sends kept once per content hash and the
 `.fit` files among them parsed into activities with laps, lengths and streams,
 each user's Garmin activities inside their seasons synced with their files,
 an MCP endpoint behind an OAuth 2.1 authorization server with tools that read
-and write the plan,
+and write the plan and read activities and their files,
 and a React dashboard it serves, with no screens yet.
 
 ## Open questions
@@ -31,6 +31,5 @@ common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- MCP tools that read workout history.
 - MCP tools that write preferences, goals and nutrition logs.
 - Dashboard screens.
