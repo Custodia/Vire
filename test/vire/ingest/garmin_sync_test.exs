@@ -29,9 +29,9 @@ defmodule Vire.Ingest.GarminSyncTest do
 
   setup do
     user = user_fixture()
-    connection = provider_connection_fixture(user)
     scope = Scope.for_user(user)
     season_fixture(scope, %{name: "Summer", period: period(~D[2026-07-01], ~D[2026-07-31])})
+    connection = provider_connection_fixture(user)
     %{scope: scope, user: user, connection: connection}
   end
 
@@ -181,7 +181,12 @@ defmodule Vire.Ingest.GarminSyncTest do
 
       stub_garmin([ride_summary(), run_summary()])
 
-      assert %{success: 1} = sync(context.user, period(~D[2026-07-16], ~D[2026-09-30]))
+      assert :ok =
+               perform_job(SyncWorker, %{
+                 user_id: context.user.id,
+                 first: "2026-07-16",
+                 last: "2026-09-30"
+               })
 
       assert searches() == [{"2026-07-16", "2026-07-31", 0}]
       assert Enum.map(activities(), & &1.external_id) == ["7000002"]

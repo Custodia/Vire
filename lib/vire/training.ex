@@ -14,6 +14,7 @@ defmodule Vire.Training do
   import Ecto.Query
 
   alias Vire.Accounts.Scope
+  alias Vire.Ingest
   alias Vire.Repo
   alias Vire.Training.Block
   alias Vire.Training.Constraints
@@ -70,10 +71,19 @@ defmodule Vire.Training do
 
   ## Seasons, phases, blocks and cycles
 
-  @doc "Creates a season from a name, a period and a rationale."
+  @doc """
+  Creates a season from a name, a period and a rationale, and enqueues a
+  Garmin sync of its dates for a user with an unpaused Garmin connection.
+  """
   def create_season(%Scope{user: user} = scope, attrs) do
     changeset = Season.changeset(%Season{user_id: user.id}, attrs)
-    logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
+
+    logged(scope, nil, nil, fn ->
+      with {:ok, season} <- Repo.insert(changeset) do
+        request_sync(scope, season.period)
+        {:ok, season}
+      end
+    end)
   end
 
   @doc "Creates a phase in a season from a name, a period and a rationale."
@@ -111,9 +121,21 @@ defmodule Vire.Training do
     end
   end
 
-  @doc "Changes a season's name, period or rationale."
-  def update_season(%Scope{} = scope, id, attrs, rationale),
-    do: update_level(scope, Season, id, attrs, rationale)
+  @doc """
+  Changes a season's name, period or rationale. A period that gains dates
+  enqueues a Garmin sync of the dates it gained, for a user with an unpaused
+  Garmin connection.
+  """
+  def update_season(%Scope{} = scope, id, attrs, rationale) do
+    with {:ok, season} <- fetch_for_write(scope, Season, id) do
+      changeset =
+        season
+        |> Season.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+
+      logged(scope, season, rationale, fn -> update_widening(scope, season, changeset) end)
+    end
+  end
 
   @doc "Changes a phase's name, period or rationale."
   def update_phase(%Scope{} = scope, id, attrs, rationale),
@@ -236,6 +258,37 @@ defmodule Vire.Training do
   end
 
   ## Helpers
+
+  defp update_widening(scope, season, changeset) do
+    with {:ok, updated} <- Repo.update(changeset) do
+      request_sync(scope, gained(season.period, updated.period))
+      {:ok, updated}
+    end
+  end
+
+  defp request_sync(_scope, nil), do: :ok
+
+  defp request_sync(%Scope{} = scope, %Period{} = period) do
+    Ingest.enqueue_sync(scope, period)
+    :ok
+  end
+
+  # The dates `new` holds and `old` does not, as one period spanning them.
+  defp gained(%Period{} = old, %Period{} = new) do
+    earlier =
+      if Date.before?(new.first, old.first),
+        do: Period.new(new.first, Enum.min([new.last, Date.add(old.first, -1)], Date))
+
+    later =
+      if Date.after?(new.last, old.last),
+        do: Period.new(Enum.max([new.first, Date.add(old.last, 1)], Date), new.last)
+
+    case {earlier, later} do
+      {nil, later} -> later
+      {earlier, nil} -> earlier
+      {earlier, later} -> Period.new(earlier.first, later.last)
+    end
+  end
 
   defp next_cycle_period(%Block{period: block_period} = block) do
     latest_end =
