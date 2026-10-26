@@ -168,10 +168,42 @@ and only their SHA-256 is stored.
   each a name, a description, a JSON Schema for its arguments and a function
   of the scope and the arguments, and the registry lists the groups. `tools/list`
   describes every registered tool, and `tools/call` of an unknown name is
-  -32602. A tool answering `{:ok, map}` gives a result with the map as its
-  structured content and the same JSON as text; `{:error, reason}`, a
-  changeset, `:not_found` or a message, gives a result with `isError` and a
-  text explaining it. A tool that raises is logged and answers -32603.
+  -32602. Arguments are checked against the schema before the tool runs, and
+  a field it does not name is refused. A tool answering `{:ok, map}` gives a
+  result with the map as its structured content and the same JSON as text.
+  Refused arguments and a changeset give a result with `isError` whose
+  structured content and text are `{ok: false, errors}`, each error a path
+  such as `ops[3].sessions[2].date` and a message; `:not_found` or a message
+  gives one with a text explaining it. A tool that raises is logged and
+  answers -32603.
+- **The plan tools** call the `Training` and `Ingest` functions. Dates are
+  ISO 8601 strings, ids are UUID strings, and a period is an object of an
+  inclusive `first` and `last` date. A `when` argument names dates absolute
+  or relative to the UTC date: a date, `today`, `yesterday`, `tomorrow`,
+  `-3d` or `+2d`, the last, this or next week (Monday to Sunday), month or
+  cycle, this block, phase or season, or `{first, last}` of those; answers
+  give it back as a period.
+  - `read_plan` lists the rows of one level, `from`, each going down to
+    `to`, by default from the season to every step; `to: "session"` keeps a
+    session's structure title and note without its steps. Rows below a
+    season carry their chain of the rows above. `when` keeps the rows
+    overlapping its dates at every level, `season_id` one season, and
+    `filter` the sessions of given statuses and disciplines, or the planned
+    ones before today, with the rows above them. `summary` adds each cycle's
+    session counts and its planned and matched seconds. A session without an
+    activity carries the candidates the matcher scores above 0.
+  - `write_plan` takes a `change_log` and a list of creates, updates and
+    deletes, each one shape per level, run in order as one batch. A create
+    carries the rows beneath it, down to a cycle's days and sessions, and a
+    day is updated by its date. A create's root requires a `rationale`, which
+    the rows nested in it inherit unless they give their own; an update's
+    rationale replaces the row's. The change log entry goes to every write of
+    the op, or the op's own when it gives one. It answers the ids of the rows
+    written in the shape of the ops, or every error with its path and nothing
+    written. The plan's rules are written in its description.
+  - `match_session` sets or clears a session's activity with a change log
+    entry and answers the session with its candidates; `sync_now` enqueues a
+    sync.
 
 ## Training
 
@@ -194,7 +226,8 @@ or a delete takes the reason for the change.
   of one parent, from overlapping. Triggers keep a child inside its parent's
   period and a day inside its cycle, and stop a parent from shrinking past a
   child. They raise check violations named after the rule, so a breach comes
-  back as a changeset error on the period.
+  back as a changeset error on the period. The overlap and trigger checks are
+  deferrable, and a batch defers them to its end.
 - **Days** come with their cycle: creating a cycle creates one rest day per
   date in its period, so a user has at most one day per date. A cycle created
   without a period runs from the day after the block's latest cycle, or from the
@@ -216,14 +249,25 @@ or a delete takes the reason for the change.
   and on the session's date, makes it done or planned, and is logged;
   automatic matching leaves such a session out, and a skipped one too. Only a
   hand sets a session skipped. A per-user advisory lock serialises matching.
+- **A batch** runs many writes in one transaction and checks the period rules
+  once they have all run, so a block can shrink and its neighbour grow in
+  either order. It first gives every cycle a rest day for each date it lacks
+  one, then reports every row breaking a rule with the rule, rolling
+  everything back.
 - **The change log** records every write in the same transaction as one row:
   the entity and its id, insert, update or delete, the row before and after as
-  JSON, the rationale, and the scope's channel and MCP client. A delete's
+  JSON, the reason given or a new row's own rationale, and the scope's channel
+  and MCP client. A delete's
   cascade, and the days a cycle gains or loses, fall under the change of the row
   the caller acted on. Changes list newest first, by entity and id.
-- **Reads** are the list of seasons, the plan from season to sessions for one
-  season or for the seasons overlapping a period, and one day with its sessions
-  and the chain above it from the `training_day_contexts` view.
+- **Reads** are the list of seasons, the start and end of every row of a
+  level, the plan from season to sessions for one season, for the seasons
+  overlapping a period or for every season, and one day with its sessions and
+  the chain above it from the `training_day_contexts` view. Candidates are the
+  unmatched activities on an unmatched session's date the matcher scores above
+  0, most likely first. A cycle's summary counts its sessions planned, done,
+  skipped and still planned before today, and sums their planned seconds and
+  their matched activities' seconds.
 
 ## Ingest
 
