@@ -13,7 +13,7 @@ config :vire, VireWeb.Endpoint,
   secret_key_base: "lElUE2fKquWZXLWr/NTjxZoPFRk5udKd1Y6vrr40GsvyI2JqLEWXwoMdWZh31LjY",
   server: false
 
-config :vire, Oban, testing: :manual
+config :vire, Oban, testing: :manual, plugins: false
 
 # Nothing listens on port 9, so a request that escapes the stub reaches no one.
 config :vire, Vire.Ingest.Garmin,
