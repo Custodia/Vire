@@ -96,6 +96,15 @@ defmodule Vire.Training do
     |> Repo.preload([:context, sessions: sessions_query(scope)])
   end
 
+  @doc "The scope's sessions matched to the activities with `activity_ids`, by activity id."
+  def list_matched_sessions(%Scope{} = scope, activity_ids) when is_list(activity_ids) do
+    Session
+    |> for_user(scope)
+    |> where([s], s.activity_id in ^activity_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.activity_id, &1})
+  end
+
   @doc """
   The activities that could be each of the scope's `sessions`, by session id:
   for a session without an activity that is not skipped, the unmatched

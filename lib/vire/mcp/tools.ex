@@ -6,7 +6,7 @@ defmodule Vire.Mcp.Tools do
 
   alias Vire.Mcp.Tool
 
-  @groups [Vire.Mcp.PlanTools]
+  @groups [Vire.Mcp.PlanTools, Vire.Mcp.ActivityTools]
 
   @doc "Every registered tool."
   @spec all() :: [Tool.t()]

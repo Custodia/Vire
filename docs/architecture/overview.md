@@ -210,6 +210,15 @@ and only their SHA-256 is stored.
   - `match_session` sets or clears a session's activity with a change log
     entry and answers the session with its candidates; `sync_now` enqueues a
     sync.
+- **The activity tools** call the `Activities`, `Ingest` and `Training`
+  functions: `list_activities` for the summaries on the dates a `when` names,
+  optionally of one discipline or only those no session is matched to, each
+  with the id of its matched session; `get_activity` with its laps, lengths,
+  the provider's summary and its matched session; `get_activity_streams` for
+  chosen channels, or every recorded one, at a number of seconds per sample;
+  and `get_activity_files`, which answers for up to 50 activities a signed URL
+  for each original file with its expiry, the file's size and its SHA-256 in
+  hex, and the activities it has no file for with the reason.
 
 ## Training
 
