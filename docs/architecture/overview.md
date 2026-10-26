@@ -6,13 +6,16 @@ lifecycle: living
 # Architecture overview
 
 Vire is one Elixir application, `vire`, against one PostgreSQL database
-([0002](adr/0002-backend-stack.md)). It serves a JSON API and a single-page
-dashboard, and runs background jobs in the same VM.
+([0002](adr/0002-backend-stack.md)). It serves a JSON API, a single-page
+dashboard and the OAuth endpoints MCP clients authorize through, and runs
+background jobs in the same VM.
 
 ```
-browser ──HTTP──▶ Phoenix endpoint ──▶ /api/*      JSON API
-                                   ──▶ /assets/*   built dashboard files
-                                   ──▶ /*          dashboard index.html
+browser ────HTTP──▶ Phoenix endpoint ──▶ /api/*          JSON API
+MCP client ─HTTP──▶                  ──▶ /.well-known/*  OAuth metadata
+                                     ──▶ /oauth/*        OAuth 2.1 authorization server
+                                     ──▶ /assets/*       built dashboard files
+                                     ──▶ /*              dashboard index.html
                   Oban ◀──────────────▶ PostgreSQL ◀── Ecto repo
                   Oban jobs ──HTTPS──▶ Garmin Personal API
                   FIT decoder ──port──▶ node decoder/decode.js
@@ -44,6 +47,42 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
   sit behind the `:authenticated` pipeline.
+- **The OAuth metadata** for MCP clients ([0010](adr/0010-mcp-access.md)):
+  `GET /.well-known/oauth-protected-resource`, also served at
+  `/.well-known/oauth-protected-resource/mcp`, names `/mcp` as the resource
+  and the application's URL as its authorization server.
+  `GET /.well-known/oauth-authorization-server` names the issuer, the
+  authorization, token and registration endpoints, the `code` response type,
+  the `authorization_code` and `refresh_token` grants, the S256 challenge
+  method and the `none` token endpoint auth method. Every URL is built from the
+  endpoint's configured URL.
+- **`POST /oauth/register`** registers a client from a JSON `client_name` and
+  `redirect_uris` and answers 201 with its `client_id` and no secret. A bad
+  redirect URI answers 400 with `invalid_redirect_uri`, a missing name with
+  `invalid_client_metadata`.
+- **`GET /oauth/authorize`** takes `response_type=code`, `client_id`,
+  `redirect_uri`, an S256 `code_challenge`, `state`, and optionally `scope`,
+  which is ignored, and `resource`. An unknown client, an unregistered redirect
+  URI or a missing challenge answers a 400 page; a wrong response type or
+  resource redirects to the client with the error. Without a signed-in user it
+  answers a sign-in page whose form posts to **`POST /oauth/sign_in`**, which
+  signs in as `POST /api/session` does and redirects back to the same request.
+  With one it answers a consent page whose approve and deny buttons post to
+  **`POST /oauth/authorize`**: approve redirects to the redirect URI with
+  `code` and `state`, deny with `error=access_denied` and `state`.
+- **`POST /oauth/token`** takes a form. The `authorization_code` grant takes
+  `code`, `code_verifier`, `client_id` and `redirect_uri`; the `refresh_token`
+  grant takes `refresh_token` and `client_id`. Both answer a Bearer access
+  token, `expires_in` and a refresh token, uncached. Errors are RFC 6749
+  JSON: `invalid_request`, `invalid_grant` and `unsupported_grant_type` with
+  400, `invalid_client` with 401.
+- **Cross-origin calls**: the metadata, registration and token endpoints answer
+  any origin and its preflight, because browser-based clients call them from
+  their own origin. None of them reads the session.
+- **The `:browser` pipeline** serves the sign-in and consent pages: HTML from
+  server-rendered templates with an inline stylesheet, the session, CSRF protection
+  on every post, the signed-in scope, and secure headers whose content security
+  policy admits only that stylesheet, by hash, and forbids framing.
 - **Static files** come from `priv/static`. Files under `/assets` are cached
   indefinitely, because their names carry a hash of their content.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
@@ -72,6 +111,31 @@ scope ([0005](adr/0005-access.md)).
   under `/api` is assigned one as `current_scope` when its session names an
   existing user. Every function that reads or writes a user's data takes the
   scope as its first argument and filters by its user.
+
+## Mcp
+
+The `Mcp` context holds MCP clients and the grants that let them act for a
+user ([0010](adr/0010-mcp-access.md)). Codes and tokens are 32 random bytes,
+and only their SHA-256 is stored.
+
+- **A client** has a random client id, a name and one to ten redirect URIs,
+  each https, or http on `localhost` or `127.0.0.1`, without a fragment. A
+  registered client is public and has no secret.
+- **An authorization request** is checked in order: the client, the exact
+  redirect URI, and the S256 challenge, whose failures are shown and not
+  redirected; then the response type and the resource, whose failures go
+  back to the redirect URI with the request's state.
+- **An authorization code** names its user, client, redirect URI and
+  challenge, and lives ten minutes. It is exchanged once, for the same client
+  and redirect URI, with a verifier whose S256 hash is the challenge. A code
+  presented again revokes every token its user holds for that client.
+- **A token** row holds an access token's hash and expiry, an hour after
+  issue, its refresh token's hash and a revocation time. The refresh token
+  lasts thirty days from the row's creation. A refresh revokes the row and
+  issues a new one; a revoked refresh token presented again revokes every
+  token its user holds for that client. Codes and tokens are deleted with
+  their user or client.
+- **The change log** points at the client of a change made over MCP.
 
 ## Training
 
@@ -271,7 +335,9 @@ Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
-renders the whole app against the MSW handlers in `assets/src/mocks`. Elixir
+renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
+tests register a client and drive the sign-in and consent pages with their
+CSRF tokens checked, as a browser's posts are. Elixir
 tests tagged `dashboard_build` need the built dashboard and are skipped without
 it.
 Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix

@@ -1,0 +1,17 @@
+<h1>Sign in to Vire</h1>
+<p><strong><%= @request.client.name %></strong> is asking for access to your account.</p>
+<form method="post" action="/oauth/sign_in">
+  <%= request_fields(%{request: @request}) %>
+  <%= if @error do %>
+  <p class="error" role="alert"><%= @error %></p>
+  <% end %>
+  <label>
+    Email
+    <input type="email" name="email" autocomplete="username" required autofocus>
+  </label>
+  <label>
+    Password
+    <input type="password" name="password" autocomplete="current-password" required>
+  </label>
+  <button type="submit">Sign in</button>
+</form>

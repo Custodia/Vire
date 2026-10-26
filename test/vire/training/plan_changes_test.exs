@@ -2,6 +2,7 @@ defmodule Vire.Training.PlanChangesTest do
   use Vire.DataCase, async: true
 
   alias Vire.Accounts.Scope
+  alias Vire.Mcp
   alias Vire.Training
   alias Vire.Training.Cycle
   alias Vire.Training.Day
@@ -193,7 +194,9 @@ defmodule Vire.Training.PlanChangesTest do
   end
 
   test "a change made over MCP names the client", %{season: season, scope: scope} do
-    client_id = Ecto.UUID.generate()
+    {:ok, %{id: client_id}} =
+      Mcp.register_client(%{name: "Coach", redirect_uris: ["https://coach.example/cb"]})
+
     mcp = %Scope{user: scope.user, channel: :mcp, mcp_client_id: client_id}
 
     {:ok, _season} = Training.update_season(mcp, season.id, %{name: "Coach's base"}, "Coach")
