@@ -9,7 +9,7 @@ import { ApiError } from "./api/client.js";
 import { meQuery } from "./api/queries.js";
 import { DayScreen } from "./screens/day.jsx";
 import { ErrorScreen } from "./screens/error.jsx";
-import { PlaceholderScreen } from "./screens/placeholder.jsx";
+import { ActivityScreen, SessionScreen } from "./screens/session.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
 import { TodayScreen } from "./screens/today.jsx";
 
@@ -64,13 +64,13 @@ const dayRoute = createRoute({
 const sessionRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/sessions/$id",
-  component: () => <PlaceholderScreen title="Session" />,
+  component: SessionScreen,
 });
 
 const activityRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
   path: "/activities/$id",
-  component: () => <PlaceholderScreen title="Activity" />,
+  component: ActivityScreen,
 });
 
 export const routeTree = rootRoute.addChildren([

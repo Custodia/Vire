@@ -1,19 +1,9 @@
 import { useId } from "react";
 import { discipline as disciplineOf } from "../lib/disciplines.js";
-import { formatPlanned } from "../lib/format.js";
-import { peakZone, stepsOf, totalSeconds } from "../lib/structure.js";
+import { sessionStats, stepsOf } from "../lib/structure.js";
 import { DisciplineIcon } from "./DisciplineIcon.jsx";
 import { Stat } from "./Stat.jsx";
 import { WorkoutProfile } from "./WorkoutProfile.jsx";
-
-function statsOf(session, steps) {
-  const stats = [{ label: "Duration", value: formatPlanned(session.planned_seconds) }];
-  const work = totalSeconds(steps, "work");
-  const peak = peakZone(steps);
-  if (work > 0) stats.push({ label: "Work", value: formatPlanned(work) });
-  if (peak) stats.push({ label: "Peak zone", value: `Z${peak}` });
-  return stats;
-}
 
 /**
  * The large card of an upcoming session: its discipline and place in the day,
@@ -52,7 +42,7 @@ export function SessionCard({ session, lead, place, as: LinkComponent = "a", lin
         {note && <p className="m-0 text-sm text-ink-soft">{note}</p>}
       </div>
       <div className="grid grid-cols-3 gap-2">
-        {statsOf(session, steps).map((stat) => (
+        {sessionStats(session).map((stat) => (
           <Stat key={stat.label} value={stat.value} label={stat.label} />
         ))}
       </div>

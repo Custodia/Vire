@@ -73,6 +73,17 @@ defmodule Vire.Training do
   end
 
   @doc """
+  The scope's session with `id`, with its date and its day, the day loaded as
+  `get_day/2` loads it without its sessions, or `nil`.
+  """
+  def get_session(%Scope{} = scope, id) do
+    case session_with_date(scope, id) do
+      nil -> nil
+      session -> Repo.preload(session, day: [:cycle, :context])
+    end
+  end
+
+  @doc """
   The scope's activities on the local `date` that no session is matched to,
   earliest first.
   """

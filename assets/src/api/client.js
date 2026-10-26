@@ -42,3 +42,12 @@ export const signIn = ({ email, password }) =>
 export const signOut = () => api("/session", { method: "DELETE" });
 
 export const getDay = (date) => api(`/days/${date}`);
+
+export const getSession = (id) => api(`/sessions/${encodeURIComponent(id)}`);
+
+export const getActivity = (id) => api(`/activities/${encodeURIComponent(id)}`);
+
+export const getActivityStreams = (id, channels, step) =>
+  api(
+    `/activities/${encodeURIComponent(id)}/streams?${new URLSearchParams({ channels: channels.join(","), step })}`,
+  );

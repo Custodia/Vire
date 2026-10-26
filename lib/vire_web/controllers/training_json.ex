@@ -7,6 +7,27 @@ defmodule VireWeb.TrainingJSON do
   alias Vire.Training.Day
   alias Vire.Training.Session
 
+  @lap_fields [
+    :lap_index,
+    :started_at,
+    :elapsed_seconds,
+    :moving_seconds,
+    :distance_m,
+    :avg_heart_rate,
+    :avg_power,
+    :avg_speed_mps
+  ]
+
+  @length_fields [
+    :length_index,
+    :lap_index,
+    :started_at,
+    :elapsed_seconds,
+    :active,
+    :stroke,
+    :strokes
+  ]
+
   @titles %{
     swim: "Swim",
     bike: "Bike",
@@ -45,6 +66,19 @@ defmodule VireWeb.TrainingJSON do
     }
   end
 
+  @doc """
+  A session loaded with its day, the day's cycle and context, with the day and
+  the chain above it, and its matched activity with laps and lengths, or `nil`.
+  """
+  def session_detail(%Session{day: %Day{} = day} = session, activity) do
+    session
+    |> session(nil)
+    |> Map.merge(%{
+      day: %{id: day.id, date: day.day, kind: day.kind, note: day.note, chain: chain(day)},
+      activity: activity && activity_detail(activity)
+    })
+  end
+
   def activity_summary(%Activity{} = activity) do
     Map.take(activity, [
       :id,
@@ -55,6 +89,17 @@ defmodule VireWeb.TrainingJSON do
       :distance_m,
       :training_load
     ])
+  end
+
+  @doc "An activity's summary with its local date, pool length, laps and lengths."
+  def activity_detail(%Activity{} = activity) do
+    activity
+    |> activity_summary()
+    |> Map.merge(Map.take(activity, [:local_date, :pool_length_m]))
+    |> Map.merge(%{
+      laps: Enum.map(activity.laps, &Map.take(&1, @lap_fields)),
+      lengths: Enum.map(activity.lengths, &Map.take(&1, @length_fields))
+    })
   end
 
   @doc """

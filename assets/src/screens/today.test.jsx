@@ -71,7 +71,9 @@ describe("Today on a training day", () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(`/sessions/${sessions.swim.id}`),
     );
-    expect(screen.getByRole("heading", { name: "Session" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Swim — endurance" }),
+    ).toBeVisible();
   });
 
   test("opens an upcoming session from its card", async () => {
@@ -96,9 +98,9 @@ describe("Today on a training day", () => {
     await waitFor(() =>
       expect(router.state.location.pathname).toBe(`/activities/${activities.walk.id}`),
     );
-    expect(screen.getByRole("heading", { name: "Activity" })).toBeVisible();
+    expect(await screen.findByRole("heading", { level: 1, name: "Other" })).toBeVisible();
 
-    await userEvent.click(screen.getByRole("link", { name: "‹ Today" }));
+    await userEvent.click(screen.getByRole("link", { name: "Back to Today" }));
 
     expect(await screen.findByRole("heading", { level: 1, name: "Today" })).toBeVisible();
   });

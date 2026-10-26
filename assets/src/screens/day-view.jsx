@@ -3,16 +3,18 @@ import { discipline as disciplineOf } from "../lib/disciplines.js";
 import {
   addDays,
   formatClock,
+  formatDay,
   formatDistance,
   formatPlanned,
   formatStartTime,
   localDate,
 } from "../lib/format.js";
-import { Button } from "../ui/Button.jsx";
+import { BackLink } from "../ui/BackLink.jsx";
 import { CoachNote } from "../ui/CoachNote.jsx";
 import { SessionCard } from "../ui/SessionCard.jsx";
 import { SessionRow } from "../ui/SessionRow.jsx";
 import { StatusChip } from "../ui/StatusChip.jsx";
+import { QueryContent } from "./query-content.jsx";
 
 const cycleKinds = { load: "Load cycle", recovery: "Recovery cycle" };
 
@@ -158,6 +160,19 @@ export function dayLink(date) {
   return date === localDate() ? { to: "/today" } : { to: "/days/$date", params: { date } };
 }
 
+/** A link back to a date's day, or to Today before the date is known. */
+export function DayBackLink({ date }) {
+  const today = !date || date === localDate();
+  return (
+    <BackLink
+      as={Link}
+      linkProps={today ? { to: "/today" } : { to: "/days/$date", params: { date } }}
+    >
+      {today ? "Today" : formatDay(date)}
+    </BackLink>
+  );
+}
+
 /** Links to the days before and after a date. */
 export function DayLinks({ date }) {
   return (
@@ -208,26 +223,9 @@ export function DayHeader({ label, title, data, actions }) {
 
 /** A day's data while it loads, when it fails, and once it arrives. */
 export function DayContent({ query }) {
-  if (query.isPending) {
-    return (
-      <p role="status" className="m-0 text-sm text-ink-muted">
-        Loading the day…
-      </p>
-    );
-  }
-
-  if (query.isError) {
-    return (
-      <div className="flex flex-col items-start gap-3">
-        <p role="alert" className="m-0 text-sm text-ink-soft">
-          The day could not be loaded.
-        </p>
-        <Button variant="secondary" onClick={() => query.refetch()}>
-          Try again
-        </Button>
-      </div>
-    );
-  }
-
-  return <DayView data={query.data} />;
+  return (
+    <QueryContent query={query} noun="day">
+      {(data) => <DayView data={data} />}
+    </QueryContent>
+  );
 }

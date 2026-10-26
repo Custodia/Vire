@@ -1,3 +1,5 @@
+import { formatPlanned } from "./format.js";
+
 const kindLabels = {
   warmup: "warm-up",
   work: "work",
@@ -48,4 +50,22 @@ function describeStep(step) {
   const minutes = Math.round((step.seconds / 60) * 10) / 10;
   const zone = step.zone ? ` in Z${step.zone}` : "";
   return `${minutes}′ ${kindLabel(step.kind)}${zone}`;
+}
+
+/** A session's planned duration, its time at work and its peak zone, leaving out what it lacks. */
+export function sessionStats(session) {
+  const steps = stepsOf(session.structure);
+  const stats = [{ label: "Duration", value: formatPlanned(session.planned_seconds) }];
+  const work = totalSeconds(steps, "work");
+  const peak = peakZone(steps);
+  if (work > 0) stats.push({ label: "Work", value: formatPlanned(work) });
+  if (peak) stats.push({ label: "Peak zone", value: `Z${peak}` });
+  return stats;
+}
+
+/** The steps as rows, a repeat's steps each carrying its count, such as 3×. */
+export function stepRows(steps, times = "") {
+  return steps.flatMap((step) =>
+    step.repeat ? stepRows(step.steps, `${times}${step.repeat}×`) : [{ ...step, times }],
+  );
 }

@@ -21,6 +21,19 @@ export function formatPlanned(seconds) {
   return `${Math.floor(minutes / 60)}h${rest === 0 ? "" : String(rest).padStart(2, "0")}`;
 }
 
+/** A step's duration: whole minutes as 12′, anything else with its seconds, as 30″ or 1′30″. */
+export function formatStepDuration(seconds) {
+  if (seconds % 60 === 0) return formatPlanned(seconds);
+  const minutes = Math.floor(seconds / 60);
+  const secs = `${seconds % 60}″`;
+  return minutes > 0 ? `${minutes}′${secs.padStart(3, "0")}` : secs;
+}
+
+/** The time a speed in metres per second takes to cover `metres`, as 5:12, or a dash. */
+export function formatPace(speed, metres) {
+  return speed > 0 ? formatClock(metres / speed) : "—";
+}
+
 /** A recorded duration on a clock: 9:05 or 1:08:40. */
 export function formatClock(seconds) {
   const total = Math.round(seconds);

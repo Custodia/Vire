@@ -58,6 +58,15 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   session is matched to. An activity summary is its id, discipline, start, UTC
   offset, duration, distance and training load. A date outside every cycle
   answers `day: null`; a malformed date answers 400.
+- **`GET /api/sessions/:id`** answers a session as a day lists it, with its
+  day (id, date, kind, note and chain) and its matched activity in full.
+  **`GET /api/activities/:id`** answers an activity in full: its summary, local
+  date, pool length, laps and pool lengths.
+  **`GET /api/activities/:id/streams?channels=&step=`** answers the named
+  channels, or every recorded one, at `step` seconds per sample; a `step` that
+  is not a whole number from 1 answers 400. All three sit behind the
+  `:authenticated` pipeline and answer 404 for another user's session or
+  activity.
 - **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
   `:mcp` pipeline answers 403 to an `Origin` header naming another host than
   the endpoint's, and then checks the bearer token. Without one it answers 401
@@ -411,8 +420,18 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   and lists the done and skipped sessions as rows linking to
   `/sessions/:id`. A rest day shows the rest state, a training day without
   sessions says none are planned, a date outside the plan says so, and the
-  date's unmatched activities are rows linking to
-  `/activities/:id`. Those two routes show a placeholder.
+  date's unmatched activities are rows linking to `/activities/:id`.
+- **A session** (`/sessions/:id`) reads `GET /api/sessions/:id` and links back
+  to its day. A planned or skipped session shows its state, its stats, its
+  structure as a workout profile with the zone legend and the steps listed,
+  and its rationale. A done session shows planned against actual duration and
+  distance, the matched activity's laps, its pool lengths for a swim, and for
+  a ride or a run a chart of power and heart rate or heart rate and pace. The
+  chart asks `GET /api/activities/:id/streams` for about one sample per two
+  pixels of its width, and uPlot, loaded only where the browser can draw on a
+  canvas, draws it in the token colours. **An activity** (`/activities/:id`)
+  shows an activity without a session the same way, from
+  `GET /api/activities/:id`.
 - **A day** (`/days/:date`) shows the same sections for the date in the URL,
   with the date as its title, links to the previous and next day and a link
   back to Today. A link to the browser's local date goes to `/today`, and a
@@ -425,8 +444,8 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   are bundled from fontsource packages.
 - `src/ui/` holds the components screens are built from, one per file: `Stat`,
   `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
-  `SessionCard`, `SessionRow`, `CoachNote`, `BackLink`, `Button`, `TextField`
-  and the `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
+  `SessionCard`, `SessionRow`, `CoachNote`, `BackLink`, `Button`, `TextField`,
+  `TrainingZoneLegend`, `StreamChart` and the `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
   wide as their seconds and as tall as their zone, with repeats written out.
 - A web app manifest starts the installed app at `/today`.
 

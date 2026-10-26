@@ -59,6 +59,9 @@ defmodule VireWeb.Router do
 
     get "/me", MeController, :show
     get "/days/:date", DayController, :show
+    get "/sessions/:id", TrainingSessionController, :show
+    get "/activities/:id", ActivityController, :show
+    get "/activities/:id/streams", ActivityController, :streams
     post "/uploads", UploadController, :create
     get "/uploads/:id", UploadController, :show
   end

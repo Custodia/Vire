@@ -57,6 +57,10 @@
   --color-training-zone-4: #ffa43a;
   --color-training-zone-5: #ff5c7a;
 
+  --color-chart-power: var(--color-discipline-bike);
+  --color-chart-heart-rate: var(--color-training-zone-5);
+  --color-chart-pace: var(--color-discipline-swim);
+
   --color-state-done: #b7f36b;
   --color-state-done-tint: #13261a;
   --color-state-done-edge: #2f5a2a;
