@@ -146,7 +146,9 @@ defmodule Vire.Training.PlanChangesTest do
 
     assert {change.before["day_id"], change.after["day_id"]} == {session.day_id, target.id}
 
-    assert change.before["structure"] == %{"steps" => [%{"minutes" => 90, "zone" => 2}]}
+    assert change.before["structure"] == %{
+             "steps" => [%{"kind" => "work", "seconds" => 5400, "zone" => 2}]
+           }
   end
 
   test "a delete stores the row before it went", %{scope: scope, cycle: cycle} do

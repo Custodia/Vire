@@ -5,6 +5,8 @@ defmodule Vire.Training.Session do
 
   import Ecto.Changeset
 
+  alias Vire.Training.Structure
+
   schema "training_sessions" do
     field :date, :date, virtual: true
     field :position, :integer
@@ -26,7 +28,8 @@ defmodule Vire.Training.Session do
 
   @doc """
   A changeset for the planned parts of a session. A `date` names the day the
-  session sits on; the context resolves it to that day.
+  session sits on; the context resolves it to that day. The structure's steps
+  are checked against `Vire.Training.Structure`.
   """
   def changeset(session, attrs) do
     session
@@ -42,6 +45,7 @@ defmodule Vire.Training.Session do
     |> validate_required([:date, :position, :discipline, :rationale])
     |> validate_number(:position, greater_than_or_equal_to: 0, less_than: 32_768)
     |> validate_number(:planned_seconds, greater_than_or_equal_to: 0)
+    |> validate_change(:structure, &validate_structure/2)
     |> unique_constraint(:position,
       name: :training_sessions_day_id_position_index,
       message: "is taken by another session that day"
@@ -65,5 +69,12 @@ defmodule Vire.Training.Session do
       message: "is matched to another session"
     )
     |> foreign_key_constraint(:activity_id, name: :training_sessions_activity_id_fkey)
+  end
+
+  defp validate_structure(:structure, structure) do
+    case Structure.validate(structure) do
+      :ok -> []
+      {:error, message} -> [structure: message]
+    end
   end
 end

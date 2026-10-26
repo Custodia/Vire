@@ -99,7 +99,36 @@ defmodule VireWeb.Mcp.PlanToolsTest do
 
     branches = write_plan["inputSchema"]["properties"]["ops"]["items"]["oneOf"]
     assert length(branches) == 16
-    assert %{"session" => _, "phase_tree" => _} = write_plan["inputSchema"]["$defs"]
+    assert %{"session" => _, "phase_tree" => _} = defs = write_plan["inputSchema"]["$defs"]
+
+    assert defs["structure"]["description"] =~
+             "A step has kind (warmup, work, recovery, cooldown or rest)"
+
+    assert %{
+             "anyOf" => [
+               %{"required" => ["kind", "seconds"]},
+               %{"required" => ["repeat", "steps"]}
+             ]
+           } = defs["structure"]["properties"]["steps"]["items"]
+  end
+
+  test "write_plan refuses a structure whose steps break their shape", %{token: token} do
+    build_plan(token)
+
+    assert errors!(token, "write_plan", %{
+             "change_log" => "Strides",
+             "ops" => [
+               %{
+                 "op" => "create",
+                 "level" => "session",
+                 "date" => "2026-07-07",
+                 "position" => 0,
+                 "discipline" => "run",
+                 "structure" => %{"steps" => [%{"repeat" => 4, "steps" => [%{"seconds" => 60}]}]},
+                 "rationale" => "Strides"
+               }
+             ]
+           }) == [{"ops[0].structure.steps[0].steps[0].kind", "is required"}]
   end
 
   test "write_plan creates a season with everything beneath it in one call", ctx do
@@ -459,7 +488,11 @@ defmodule VireWeb.Mcp.PlanToolsTest do
         "date" => "2026-07-08",
         "position" => 0,
         "discipline" => "run",
-        "structure" => %{"title" => "Tempo", "note" => "Hold it", "steps" => [%{"zone" => 3}]},
+        "structure" => %{
+          "title" => "Tempo",
+          "note" => "Hold it",
+          "steps" => [%{"kind" => "work", "seconds" => 1200, "zone" => 3}]
+        },
         "rationale" => "Tempo"
       }
     ])
