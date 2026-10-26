@@ -15,6 +15,11 @@ config :vire, VireWeb.Endpoint,
 
 config :vire, Oban, testing: :manual
 
+# Nothing listens on port 9, so a request that escapes the stub reaches no one.
+config :vire, Vire.Ingest.Garmin,
+  base_url: "http://127.0.0.1:9",
+  req_options: [plug: {Req.Test, Vire.Ingest.Garmin}, retry_delay: 0, retry_log_level: false]
+
 config :vire, :credential_key, Base.decode64!("Fx1NFCZJdHxZRnhgYGmHFoyjtPtXnfF4X0JE6g1dFRg=")
 
 config :bcrypt_elixir, log_rounds: 1
