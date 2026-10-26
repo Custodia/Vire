@@ -107,9 +107,9 @@ defmodule Vire.Training do
 
   @doc """
   Creates a cycle in a block from a kind, a period and a rationale, with one
-  rest day per date. Without a period the cycle runs from the day after the
-  block's latest cycle, or the block's first day, through the following
-  Sunday, within the block.
+  rest day per date, and answers it with its days. Without a period the cycle
+  runs from the day after the block's latest cycle, or the block's first day,
+  through the following Sunday, within the block.
   """
   def create_cycle(%Scope{} = scope, block_id, attrs) do
     with {:ok, block} <- fetch_for_write(scope, Block, block_id) do
@@ -149,9 +149,9 @@ defmodule Vire.Training do
     do: update_level(scope, Block, id, attrs, rationale)
 
   @doc """
-  Changes a cycle's kind, period or rationale. A wider period gains a rest day
-  per new date. A narrower one removes the days it leaves out, and is refused
-  while any of them holds a session.
+  Changes a cycle's kind, period or rationale, and answers it with its days.
+  A wider period gains a rest day per new date. A narrower one removes the
+  days it leaves out, and is refused while any of them holds a session.
   """
   def update_cycle(%Scope{} = scope, id, attrs, rationale) do
     with {:ok, cycle} <- fetch_for_write(scope, Cycle, id) do
@@ -434,7 +434,7 @@ defmodule Vire.Training do
 
   defp with_days({:ok, cycle}) do
     add_days(cycle)
-    {:ok, cycle}
+    {:ok, Repo.preload(cycle, [days: from(d in Day, order_by: d.day)], force: true)}
   end
 
   defp with_days(error), do: error
