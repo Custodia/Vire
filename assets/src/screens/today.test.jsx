@@ -180,7 +180,7 @@ describe("Today on other days", () => {
     );
     renderApp("/today");
 
-    expect(await screen.findByRole("status")).toHaveTextContent("Loading the day…");
+    expect(await screen.findByText("Loading the day…")).toBeVisible();
     expect(await screen.findByRole("alert")).toHaveTextContent("The day could not be loaded.");
 
     failing = false;

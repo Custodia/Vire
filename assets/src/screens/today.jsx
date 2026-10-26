@@ -4,6 +4,8 @@ import { formatDay, localDate } from "../lib/format.js";
 import { Screen } from "../ui/Screen.jsx";
 import { DayContent, DayHeader, DayLinks } from "./day-view.jsx";
 import { SignOutButton } from "./sign-out.jsx";
+import { SyncButton } from "./sync.jsx";
+import { UploadDialog } from "./upload.jsx";
 
 export function TodayScreen() {
   const date = localDate();
@@ -22,6 +24,10 @@ export function TodayScreen() {
           </>
         }
       />
+      <div className="flex flex-wrap items-center gap-2">
+        <UploadDialog />
+        <SyncButton />
+      </div>
       <DayContent query={query} />
     </Screen>
   );

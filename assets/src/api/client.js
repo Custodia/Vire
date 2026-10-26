@@ -51,3 +51,13 @@ export const getActivityStreams = (id, channels, step) =>
   api(
     `/activities/${encodeURIComponent(id)}/streams?${new URLSearchParams({ channels: channels.join(","), step })}`,
   );
+
+export const postSync = () => api("/sync", { method: "POST" });
+
+export const uploadFitFile = (file) => {
+  const body = new FormData();
+  body.append("file", file);
+  return api("/uploads", { method: "POST", body });
+};
+
+export const getUpload = (id) => api(`/uploads/${encodeURIComponent(id)}`);

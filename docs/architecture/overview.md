@@ -58,6 +58,10 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   session is matched to. An activity summary is its id, discipline, start, UTC
   offset, duration, distance and training load. A date outside every cycle
   answers `day: null`; a malformed date answers 400.
+- **`POST /api/sync`** enqueues a Garmin sync of the user's seasons, behind the
+  `:authenticated` pipeline. It answers 202 with the job's id, or 409 with a
+  `reason` of `not_connected` or `paused` when the user has no unpaused Garmin
+  connection.
 - **`GET /api/sessions/:id`** answers a session as a day lists it, with its
   day (id, date, kind, note and chain) and its matched activity in full.
   **`GET /api/activities/:id`** answers an activity in full: its summary, local
@@ -414,13 +418,19 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 - **Today** (`/today`) reads `GET /api/days/:date` for the browser's local date
   under the query key `["days", date]`. Its header shows the weekday and date,
   the plan line (phase, block focus, cycle kind and the day's number in the
-  cycle), links to the previous and next day, and the sign-out action. Its sessions section counts the sessions
-  done and the planned time, puts the upcoming sessions in a horizontally
-  scrolling, scroll-snapping carousel of session cards, the next one first,
-  and lists the done and skipped sessions as rows linking to
+  cycle), links to the previous and next day, and the sign-out action. The
+  Upload and Sync now actions sit under the header. Its sessions section counts
+  the sessions done and the planned time, puts the upcoming sessions in a
+  horizontally scrolling, scroll-snapping carousel of session cards, the next
+  one first, and lists the done and skipped sessions as rows linking to
   `/sessions/:id`. A rest day shows the rest state, a training day without
   sessions says none are planned, a date outside the plan says so, and the
   date's unmatched activities are rows linking to `/activities/:id`.
+- **Upload** opens a dialog that posts a chosen `.fit` file to
+  `POST /api/uploads`, polls `GET /api/uploads/:id` until the file is processed
+  or failed, shows the result with a link to the activity, and on success
+  refreshes the cached days, sessions and activities. **Sync now** posts
+  `POST /api/sync` and shows that a sync was queued or why it was not.
 - **A session** (`/sessions/:id`) reads `GET /api/sessions/:id` and links back
   to its day. A planned or skipped session shows its state, its stats, its
   structure as a workout profile with the zone legend and the steps listed,

@@ -1,4 +1,4 @@
-import { getActivity, getActivityStreams, getDay, getMe, getSession } from "./client.js";
+import { getActivity, getActivityStreams, getDay, getMe, getSession, getUpload } from "./client.js";
 
 export const meQuery = {
   queryKey: ["me"],
@@ -23,4 +23,10 @@ export const streamsQuery = (id, channels, step) => ({
   queryKey: ["activities", id, "streams", channels, step],
   queryFn: () => getActivityStreams(id, channels, step),
   staleTime: Infinity,
+});
+
+export const uploadQuery = (id, interval) => ({
+  queryKey: ["uploads", id],
+  queryFn: () => getUpload(id),
+  refetchInterval: (query) => (query.state.data?.status === "pending" ? interval : false),
 });

@@ -333,8 +333,19 @@ export const password = "correct-horse-battery";
 // Whether the browser holds a signed-in session. Tests start signed in.
 export const mockSession = { signedIn: true };
 
+// What POST /api/sync answers: "queued" (202), or the reason of a 409,
+// "not_connected" or "paused".
+export const mockSync = { answer: "queued" };
+
+// POST /api/uploads stores the file and GET /api/uploads/:id reports it as
+// pending on its first read, then as processed, or as failed when the file's
+// content contains "corrupt".
+const uploads = new Map();
+
 export function resetMocks() {
   mockSession.signedIn = true;
+  mockSync.answer = "queued";
+  uploads.clear();
 }
 
 // Answers like the :authenticated pipeline: 401 without a session.
@@ -370,6 +381,57 @@ export const handlers = [
   http.get(
     "/api/me",
     signedIn(() => HttpResponse.json(user)),
+  ),
+
+  http.post(
+    "/api/sync",
+    signedIn(() =>
+      mockSync.answer === "queued"
+        ? HttpResponse.json({ job_id: 4711 }, { status: 202 })
+        : HttpResponse.json(
+            {
+              reason: mockSync.answer,
+              errors: { detail: "The Garmin connection cannot sync" },
+            },
+            { status: 409 },
+          ),
+    ),
+  ),
+
+  http.post(
+    "/api/uploads",
+    signedIn(async ({ request }) => {
+      const file = (await request.formData()).get("file");
+      if (!file) {
+        return HttpResponse.json(
+          { errors: { detail: "the file is not a FIT file" } },
+          { status: 422 },
+        );
+      }
+      const id = `c0ffee00-0000-4000-8000-${String(uploads.size + 1).padStart(12, "0")}`;
+      uploads.set(id, { corrupt: (await file.text()).includes("corrupt"), reads: 0 });
+      return HttpResponse.json({ id, status: "pending" }, { status: 201 });
+    }),
+  ),
+
+  http.get(
+    "/api/uploads/:id",
+    signedIn(({ params }) => {
+      const upload = uploads.get(params.id);
+      if (!upload) return notFound();
+      upload.reads += 1;
+
+      const base = { id: params.id, processor_version: 1, error: null, activity_id: null };
+      if (upload.reads === 1) return HttpResponse.json({ ...base, status: "pending" });
+      if (upload.corrupt) {
+        return HttpResponse.json({
+          ...base,
+          status: "failed",
+          error: "the file could not be decoded",
+        });
+      }
+      return HttpResponse.json({ ...base, status: "processed", activity_id: activities.ride.id });
+    }),
   ),
 
   http.get(
