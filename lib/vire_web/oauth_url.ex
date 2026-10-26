@@ -9,4 +9,7 @@ defmodule VireWeb.OAuthURL do
 
   @doc "The protected resource: the MCP endpoint."
   def resource, do: issuer() <> "/mcp"
+
+  @doc "Where the protected resource metadata is served."
+  def resource_metadata, do: issuer() <> "/.well-known/oauth-protected-resource"
 end

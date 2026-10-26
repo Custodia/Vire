@@ -43,6 +43,9 @@ Provider API keys are encrypted at rest under a 32-byte credential key. Developm
 and test carry a fixed key in their config. Production reads it in base64 from
 `VIRE_CREDENTIAL_KEY`; `openssl rand -base64 32` generates one.
 
+An MCP client connects to http://localhost:4000/mcp and authorizes through
+Vire's OAuth sign-in. `npx @modelcontextprotocol/inspector` drives the flow locally.
+
 Suites:
 
 ```sh

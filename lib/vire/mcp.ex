@@ -89,6 +89,25 @@ defmodule Vire.Mcp do
     end
   end
 
+  @doc """
+  The scope an access token acts in: its user, the MCP channel and its client.
+  An unknown, expired or revoked token answers `:error`.
+  """
+  def fetch_scope(access_token) when is_binary(access_token) do
+    now = DateTime.utc_now()
+
+    Token
+    |> where(access_token_hash: ^hash(access_token))
+    |> where([t], is_nil(t.revoked_at) and t.expires_at > ^now)
+    |> join(:inner, [t], u in assoc(t, :user))
+    |> select([t, u], {t.mcp_client_id, u})
+    |> Repo.one()
+    |> case do
+      {client_id, user} -> {:ok, %Scope{user: user, channel: :mcp, mcp_client_id: client_id}}
+      nil -> :error
+    end
+  end
+
   defp fetch_client(client_id) do
     case get_client(client_id) do
       %Client{} = client -> {:ok, client}

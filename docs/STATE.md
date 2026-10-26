@@ -11,8 +11,8 @@ with a password, a training plan per user from season to session with every
 change logged, the files each user sends kept once per content hash and the
 `.fit` files among them parsed into activities with laps, lengths and streams,
 each user's Garmin activities inside their seasons synced with their files,
-an OAuth 2.1 authorization server through which MCP clients get tokens, and
-a React dashboard it serves, with no screens yet.
+an MCP endpoint with no tools yet behind an OAuth 2.1 authorization server,
+and a React dashboard it serves, with no screens yet.
 
 ## Open questions
 
@@ -30,6 +30,6 @@ common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- MCP endpoint, and the tools that read workout history.
+- MCP tools that read workout history.
 - MCP tools that write plans, preferences, goals and nutrition logs.
 - Dashboard screens.
