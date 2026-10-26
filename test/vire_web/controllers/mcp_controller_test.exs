@@ -126,7 +126,7 @@ defmodule VireWeb.McpControllerTest do
       token = token(context)
 
       assert %{"result" => %{}} = mcp_request(token, "ping")
-      assert %{"result" => %{"tools" => []}} = mcp_request(token, "tools/list")
+      assert %{"result" => %{"tools" => [_ | _]}} = mcp_request(token, "tools/list")
       assert %{"result" => %{"resources" => []}} = mcp_request(token, "resources/list")
 
       assert %{"result" => %{"resourceTemplates" => []}} =
