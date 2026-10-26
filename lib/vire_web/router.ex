@@ -2,6 +2,7 @@ defmodule VireWeb.Router do
   use VireWeb, :router
 
   import VireWeb.Auth, only: [fetch_current_scope: 2, require_authenticated: 2]
+  import VireWeb.McpAuth, only: [check_origin: 2, require_mcp_token: 2]
 
   pipeline :api do
     plug :accepts, ["json"]
@@ -26,6 +27,22 @@ defmodule VireWeb.Router do
   # their own origin. None of them reads a cookie.
   pipeline :oauth do
     plug :allow_any_origin
+  end
+
+  pipeline :mcp do
+    plug :check_origin
+    plug :require_mcp_token
+  end
+
+  scope "/", VireWeb do
+    pipe_through :mcp
+
+    post "/mcp", McpController, :create
+  end
+
+  scope "/", VireWeb do
+    get "/mcp", McpController, :method_not_allowed
+    delete "/mcp", McpController, :method_not_allowed
   end
 
   scope "/api", VireWeb do

@@ -7,12 +7,13 @@ lifecycle: living
 
 Vire is one Elixir application, `vire`, against one PostgreSQL database
 ([0002](adr/0002-backend-stack.md)). It serves a JSON API, a single-page
-dashboard and the OAuth endpoints MCP clients authorize through, and runs
-background jobs in the same VM.
+dashboard, and an MCP endpoint with the OAuth endpoints its clients authorize
+through, and runs background jobs in the same VM.
 
 ```
 browser ────HTTP──▶ Phoenix endpoint ──▶ /api/*          JSON API
-MCP client ─HTTP──▶                  ──▶ /.well-known/*  OAuth metadata
+MCP client ─HTTP──▶                  ──▶ /mcp            MCP, JSON-RPC over streamable HTTP
+                                     ──▶ /.well-known/*  OAuth metadata
                                      ──▶ /oauth/*        OAuth 2.1 authorization server
                                      ──▶ /assets/*       built dashboard files
                                      ──▶ /*              dashboard index.html
@@ -47,6 +48,20 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
   sit behind the `:authenticated` pipeline.
+- **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
+  `:mcp` pipeline answers 403 to an `Origin` header naming another host than
+  the endpoint's, and then checks the bearer token. Without one it answers 401
+  with `WWW-Authenticate: Bearer resource_metadata="<protected resource
+  metadata URL>"`; an unknown, expired or revoked token adds
+  `error="invalid_token"`. A valid token assigns `current_scope` with its
+  user, the MCP channel and its client. Each request carries one JSON-RPC 2.0
+  message, which the endpoint reads and decodes itself, outside the body
+  parsers, up to a megabyte. A request is answered with JSON, a notification or
+  a client's response with 202 and no body; there is no session id. A body
+  that is not JSON answers 400 with -32700, and a batch or a message that is
+  not JSON-RPC 2.0 answers 400 with -32600. An `MCP-Protocol-Version` header
+  naming an unsupported version answers 400, except on `initialize`. **`GET`
+  and `DELETE /mcp`** answer 405.
 - **The OAuth metadata** for MCP clients ([0010](adr/0010-mcp-access.md)):
   `GET /.well-known/oauth-protected-resource`, also served at
   `/.well-known/oauth-protected-resource/mcp`, names `/mcp` as the resource
@@ -109,13 +124,13 @@ scope ([0005](adr/0005-access.md)).
 - **A scope** carries the signed-in user and the channel the request came
   through: the dashboard by default, or MCP with the client's id. Every request
   under `/api` is assigned one as `current_scope` when its session names an
-  existing user. Every function that reads or writes a user's data takes the
+  existing user, and every request to `/mcp` one from its access token. Every function that reads or writes a user's data takes the
   scope as its first argument and filters by its user.
 
 ## Mcp
 
-The `Mcp` context holds MCP clients and the grants that let them act for a
-user ([0010](adr/0010-mcp-access.md)). Codes and tokens are 32 random bytes,
+The `Mcp` context holds MCP clients, the grants that let them act for a user,
+and the protocol server with its tools ([0010](adr/0010-mcp-access.md)). Codes and tokens are 32 random bytes,
 and only their SHA-256 is stored.
 
 - **A client** has a random client id, a name and one to ten redirect URIs,
@@ -136,6 +151,22 @@ and only their SHA-256 is stored.
   token its user holds for that client. Codes and tokens are deleted with
   their user or client.
 - **The change log** points at the client of a change made over MCP.
+- **The protocol server** answers one message for a scope. `initialize`
+  answers protocol version 2025-06-18 when asked for it or a newer one,
+  2025-03-26 when asked for that, and 2025-06-18 otherwise, with the tools and
+  resources capabilities and the application's name and version. It answers
+  `ping`, `tools/list`, `tools/call`, `resources/list` and
+  `resources/templates/list`, both empty, and `resources/read`, which is
+  always -32002. An unknown method is -32601, params that are not an object
+  -32602.
+- **Tools** are defined in groups. A group module answers a list of tools,
+  each a name, a description, a JSON Schema for its arguments and a function
+  of the scope and the arguments, and the registry lists the groups. `tools/list`
+  describes every registered tool, and `tools/call` of an unknown name is
+  -32602. A tool answering `{:ok, map}` gives a result with the map as its
+  structured content and the same JSON as text; `{:error, reason}`, a
+  changeset, `:not_found` or a message, gives a result with `isError` and a
+  text explaining it. A tool that raises is logged and answers -32603.
 
 ## Training
 
@@ -337,7 +368,8 @@ the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
 renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
 tests register a client and drive the sign-in and consent pages with their
-CSRF tokens checked, as a browser's posts are. Elixir
+CSRF tokens checked, as a browser's posts are, and MCP tests call `/mcp` with
+the access token that flow ends in. Elixir
 tests tagged `dashboard_build` need the built dashboard and are skipped without
 it.
 Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix
