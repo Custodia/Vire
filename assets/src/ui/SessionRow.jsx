@@ -3,14 +3,16 @@ import { DisciplineIcon } from "./DisciplineIcon.jsx";
 import { StatusChip } from "./StatusChip.jsx";
 
 /**
- * The compact row of a session or activity: its discipline, title, a detail
- * line and its state, linking through `as` and `linkProps`.
+ * The row of a session or activity on a card: its discipline, title, a detail
+ * line and its state, linking through `as` and `linkProps`, outlined while it
+ * is the one `selected`.
  */
 export function SessionRow({
   discipline,
   title,
   detail,
   state,
+  selected = false,
   as: LinkComponent = "a",
   linkProps,
 }) {
@@ -18,7 +20,10 @@ export function SessionRow({
 
   return (
     <LinkComponent
-      className="focus-ring flex min-h-11 items-center gap-3 rounded-card border border-border bg-surface px-4 py-3.5 text-ink no-underline hover:bg-surface-raised"
+      aria-current={selected ? "true" : undefined}
+      className={`focus-ring flex min-h-11 items-center gap-3 rounded-tile border p-3 text-ink no-underline hover:bg-surface-raised ${
+        selected ? "border-accent bg-surface-raised" : "border-transparent"
+      }`}
       {...linkProps}
     >
       <span className={`grid size-10 flex-none place-items-center rounded-tile ${style.tile}`}>

@@ -45,6 +45,27 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
   request without a signed-in user. `/api/health`, `/api/csrf` and
   `/api/session` are public.
+- **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
+  20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
+  its parse job enqueued in one transaction; the answer is 201 with the file's
+  id and status. A file the user already has answers 200 with the existing file
+  and enqueues nothing. A missing file or one without a FIT header answers 422.
+  **`GET /api/uploads/:id`** answers the file's status, processor version, error
+  and, once processed, its activity's id. Another user's file answers 404. Both
+  sit behind the `:authenticated` pipeline.
+- **`GET /api/days/:date`** answers one date for the dashboard, behind the
+  `:authenticated` pipeline: `date`; `day`, with its kind, its note, the chain
+  of season, phase, block and cycle above it, the cycle with its kind, the
+  day's number within it and its length, and its sessions in position order,
+  each with its title (the structure's `title`, or the discipline's name),
+  structure, planned seconds, status, rationale and the summary of its matched
+  activity; and `activities`, the summaries of the date's activities no
+  session is matched to. An activity summary is its id, discipline, start, UTC
+  offset, duration, distance and training load. A date outside every cycle
+  answers `day: null`; a malformed date answers 400.
+  **`GET /api/days?from=&to=`** answers `days`, every date from `from` to `to`
+  in order, each as `GET /api/days/:date` answers it, from one query per kind
+  of row. A range longer than 42 days, reversed or missing an end answers 400.
 - **`GET /api/seasons`** answers the user's seasons, earliest first, each with
   its id, name and period, behind the `:authenticated` pipeline.
   **`GET /api/seasons/:id`** answers one season with its rationale and
@@ -61,14 +82,24 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   newest first, behind the `:authenticated` pipeline. A change is its entity,
   action, subject (the name, focus, cycle kind, date or session title of the
   row it acted on), rationale, channel, MCP client name and time.
-- **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
-  20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
-  its parse job enqueued in one transaction; the answer is 201 with the file's
-  id and status. A file the user already has answers 200 with the existing file
-  and enqueues nothing. A missing file or one without a FIT header answers 422.
-  **`GET /api/uploads/:id`** answers the file's status, processor version, error
-  and, once processed, its activity's id. Another user's file answers 404. Both
-  sit behind the `:authenticated` pipeline.
+- **`GET /api/sessions/:id`** answers a session as a day lists it, with its
+  day (id, date, kind, note and chain), its matched activity in full, and
+  `last_time`: the latest session before its date with the same discipline
+  and title that has a matched activity, as its id, date and that activity's
+  summary with its average heart rate, or `null`.
+  **`PUT /api/sessions/:id/activity`** matches the session to the activity
+  with the JSON `activity_id`, which makes it done, or clears its match with
+  `null`, logging the change from the dashboard; it answers the session as
+  `GET` does. An activity on another date or matched to another session
+  answers 422.
+  **`GET /api/activities/:id`** answers an activity in full: its summary, local
+  date, pool length, average heart rate (its laps' heart rates weighted by
+  their time), laps and pool lengths.
+  **`GET /api/activities/:id/streams?channels=&step=`** answers the named
+  channels, or every recorded one, at `step` seconds per sample; a `step` that
+  is not a whole number from 1 answers 400. All four sit behind the
+  `:authenticated` pipeline and answer 404 for another user's session or
+  activity.
 - **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
   `:mcp` pipeline answers 403 to an `Origin` header naming another host than
   the endpoint's, and then checks the bearer token. Without one it answers 401
@@ -299,12 +330,13 @@ or a delete takes the reason for the change.
   latest few with the name of the MCP client behind each.
 - **Reads** are the list of seasons, the start and end of every row of a
   level, the plan from season to sessions for one season, for the seasons
-  overlapping a period or for every season, and one day with its sessions and
-  the chain above it from the `training_day_contexts` view. Candidates are the
-  unmatched activities on an unmatched session's date the matcher scores above
-  0, most likely first. A cycle's summary counts its sessions planned, done,
-  skipped and still planned before today, and sums their planned seconds and
-  their matched activities' seconds.
+  overlapping a period or for every season, one day with its cycle, its
+  sessions and the chain above it from the `training_day_contexts` view, and
+  the activities on a local date that no session is matched to, earliest
+  first. Candidates are the unmatched activities on an unmatched session's
+  date the matcher scores above 0, most likely first. A cycle's summary counts
+  its sessions planned, done, skipped and still planned before today, and sums
+  their planned seconds and their matched activities' seconds.
 
 ## Ingest
 
@@ -421,10 +453,10 @@ scope first, and another user's activity reads as `nil` or is left out.
   second from the start, `null` where nothing was recorded, so a pause reads as
   `null`s.
 - **Reads** are the activities with a local date in a range, newest first and
-  optionally of one discipline; one activity with its laps and lengths; the
-  activity of a source file; and chosen streams at a number of seconds per
-  sample, each sample the mean of the window's recorded values, or the first
-  recorded value for position.
+  optionally of one discipline; the activities with given ids; one activity
+  with its laps and lengths; the activity of a source file; and chosen streams
+  at a number of seconds per sample, each sample the mean of the window's
+  recorded values, or the first recorded value for position.
 - **A planned session** points at its matched activity with its user, and
   loses the match when the activity is deleted.
 
@@ -433,16 +465,19 @@ scope first, and another user's activity reads as `nil` or is left out.
 A React single-page app under `assets/`, built by Vite into `priv/static`
 ([0004](adr/0004-dashboard.md)).
 
-- TanStack Router defines the routes in code. `/` redirects to `/today`.
+- TanStack Router defines the routes in code. `/` redirects to `/calendar`,
+  which redirects to the browser's date in the day view.
   `/sign-in` is public; every other route sits behind a guard that asks
   `GET /api/me` once, through a query cached for the life of the page, and
-  sends a 401 to `/sign-in` with the path it came from in `redirect`.
+  sends a 401 to `/sign-in` with the path it came from in `redirect`. Any
+  other request answering 401 means the session has ended: the dashboard goes
+  to `/sign-in` the same way and clears every cached query.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
   A failed query is retried up to three times, and never after a 4xx answer.
 - **Sign-in** posts the email and password to `POST /api/session`, says so on a
   401, and on success caches the user and goes to `redirect` when it names a
-  path on the same origin, or to `/today`. **Sign-out** posts
+  path on the same origin, or to `/calendar`. **Sign-out** posts
   `DELETE /api/session`, clears every cached query and returns to `/sign-in`.
   A route whose data fails to load shows an error with a retry.
 - **Unsafe requests** carry the session's CSRF token, which the dashboard fetches
@@ -450,11 +485,67 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   request the server refuses for its token is sent once more with a fresh one.
 - **The frame** holds every signed-in screen and stays put as the screens
   change. A window at least 64rem wide gets the desktop layout: a board under a
-  bar holding the wordmark, links to the screens and the Sign out action. A
-  narrower one gets the phone layout: the screen in a column inside the safe
-  area, over tabs for the screens and More. More opens a sheet with the user
-  and Sign out. A sheet rises from the bottom edge on a phone and closes when
-  dragged down by its handle; on a desktop it is a card in the middle.
+  bar holding the wordmark, links to the calendar and the plan and the Sign out
+  action. A narrower one gets the phone layout: the screen in a column inside
+  the safe area, over tabs for the calendar, the plan and More. More opens a
+  sheet with the user and Sign out. A sheet rises from the bottom edge on a
+  phone and closes when dragged down by its handle; on a desktop it is a card
+  in the middle. A session still planned on a day before the browser's date
+  shows as skipped on every screen; its stored status stays planned.
+- **States** draw the same on every screen. A session is a ring: thick with a
+  tick when done, thin in its discipline's colour while upcoming, thin with a
+  cross when skipped, and thick grey with a plus for an activity no session is
+  matched to; in a calendar day it is a chip in the same states, and on the
+  phone's month a dot. A day is one ring split evenly between its sessions,
+  each arc thick when done and thin otherwise, circled in the accent on today.
+  A day without sessions is a dashed ring and a Rest chip, green and ticked once
+  it is past.
+- **The calendar** shows a month, a week or a day around a date, at
+  `/calendar/:view/:date`. It reads `GET /api/days` for the dates the view
+  shows, under the query key `["days", from, to]`, prefetches the periods on
+  either side, and reads the season above them for block numbers, cycle names
+  and the weeks to the season's end. On a desktop a bar steps a period back
+  and on, goes to today and switches between Month, Week and Day, keeping the
+  date; in the view switch the view shown leads to today. The calendar opens
+  on today in the view last shown, kept in local storage. On a phone the view
+  switch sits in a bar above the tabs, and a finger sliding along it carries
+  the selection to another view. A sideways drag on the page pulls the period
+  before or after in under the finger, stepping to it when let go far or fast
+  enough.
+  Recorded sessions and activities are listed by their start, then the
+  sessions left in plan order, the first still planned today marked Next.
+  - **Month** holds the whole weeks the month touches. On a desktop each day
+    lists its sessions as chips and links to its day, each week ends in a cell
+    of its cycles and hours that links to its week, and the header counts the
+    month's sessions done and hours trained. On a phone each day shows its
+    sessions as dots; choosing one selects it and lists its sessions below.
+  - **Week** runs Monday to Sunday: each day's hours trained as a bar against
+    those planned, then a row for each day with its ring and hours, linking to
+    it. On a desktop the row holds a card for each session and activity,
+    linking to it, and the header counts the week's sessions done and skipped
+    and its hours.
+  - **Day** on a desktop lays its week across the top, its sessions and
+    unmatched activities on the left over empty readiness and weight trend
+    cards, and the shown session or activity beside them: the day's next
+    session, else its first session or activity. On a phone the week is a
+    strip of day rings over the day's progress and a timeline: each session
+    and activity a card that opens to its figures and a link to its page, the
+    next session open, and an unmatched activity offering Match. Match offers
+    the day's sessions without an activity and puts the match through
+    `PUT /api/sessions/:id/activity`.
+  - **A session** (`/sessions/:id`) and **an activity** (`/activities/:id`, or
+    the session it is matched to) show beside their day on a desktop, and as a
+    page of their own on a phone, under a link back to the day that a swipe to
+    the right also follows. A session shows its state, its stats, or its
+    recorded duration, distance, training load and heart rate against the
+    plan, its structure as a workout profile with the zone legend, the steps
+    and its rationale, and the last session like it. An activity shows its
+    stats. A recording adds its laps, its pool lengths for a swim, and for a
+    ride or a run a chart of power and heart rate or heart rate and pace. The
+    chart asks `GET /api/activities/:id/streams` for about one sample per two
+    pixels of its width, and uPlot, loaded only where the browser can draw on a
+    canvas, draws it in the token colours. A URL that holds no calendar date
+    says so.
 - **The plan** (`/plan`) reads `GET /api/seasons` and then the chosen season,
   which is the one holding the browser's date unless `season` in the query
   names another; with more than one season, buttons above the header switch.
@@ -464,23 +555,21 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   season's dates, marking what is done, current and planned, the spans no
   phase or block covers, and today. Each week's bar outlines its planned hours
   and fills them with its done sessions, its activities outside the plan and
-  the sessions still to come, leaving the hours of skipped sessions empty, and
-  hovering a week lists them. Choosing a phase or block on
-  the map selects it, opening on the block holding today. A table lists the
-  selected phase's blocks with their dates, cycles drawn to length with their
-  pattern, focus and planned hours. The selected block's days form a calendar
-  of weeks from Monday, each row naming the cycles in it, a cycle longer than
-  a week continuing on the next row and a cycle starting mid-week named on its
-  first day. A day shows its sessions in their discipline's colours, or marked
-  done or skipped, a session still planned on a day before the browser's date
-  showing as skipped, and a past rest day ticked. Beside them, an empty season
-  targets card and a coach log of `GET /api/plan_changes`. On a phone the map
-  is a strip that scrolls through the season from today, and the chosen
-  phase's blocks are cards, the one holding today open, each opening to its
-  cycles as rows of day rings: one ring a day split evenly between its
-  sessions, each arc thick when done and thin otherwise, circled in the accent
-  on today, and a dashed ring for a day without sessions, green once it is
-  past. A user without a season is told the plan starts with one.
+  the sessions still to come, leaving the hours of skipped sessions empty.
+  Hovering or focusing a week lists them, and choosing it opens its week in
+  the calendar. Choosing a phase or block on the map selects it, opening on the block
+  holding today. A table lists the selected phase's blocks with their dates,
+  cycles drawn to length with their pattern, focus and planned hours. The
+  selected block's days form a calendar of weeks from Monday, each row naming
+  the cycles in it, a cycle longer than a week continuing on the next row and
+  a cycle starting mid-week named on its first day. A day shows its sessions
+  in their discipline's colours, or marked done or skipped, and links to its
+  day in the calendar. Beside them, an empty season targets card and a coach
+  log of `GET /api/plan_changes`. On a phone the map is a strip that scrolls
+  through the season from today, and the chosen phase's blocks are cards, the
+  one holding today open, each opening to its cycles as rows of day rings that
+  link to the week of the cycle. A user without a season is told the plan
+  starts with one.
 - Tailwind v4 takes its colours, fonts, radii, spacing step, board width and
   the text sizes the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
@@ -489,13 +578,13 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   are bundled from fontsource packages.
 - `src/ui/` holds the components screens are built from, one per file: `Stat`,
   `StatusChip`, `SessionChip`, `DisciplineIcon`, `TrainingZoneBadge`,
-  `WorkoutProfile`, `SessionCard`, `SessionRow`, `CoachNote`, `Empty`,
-  `Button`, `TextField`, `Card`, `PageHeader`, `TopBar`, `TabBar`, `Sheet`,
-  the day ring, the signed-in `Frame` and `PhoneFrame` and the signed-out
-  `Screen`, a narrow column. `WorkoutProfile` draws a session's steps as an
-  SVG of bars as wide as their seconds and as tall as their zone, with
-  repeats written out.
-- A web app manifest starts the installed app at `/today` in its own window,
+  `TrainingZoneLegend`, `WorkoutProfile`, `SessionRow`, `CoachNote`, `Empty`,
+  `Button`, `TextField`, `StreamChart`, `Card`, `PageHeader`, `TopBar`,
+  `TabBar`, `Sheet`, the marks of sessions and days, the signed-in `Frame` and
+  `PhoneFrame` and the signed-out `Screen`, a narrow column.
+  `WorkoutProfile` draws a session's steps as an SVG of bars as wide as their
+  seconds and as tall as their zone, with repeats written out.
+- A web app manifest starts the installed app at `/calendar` in its own window,
   with PNG icons for Android and iOS home screens.
 
 ## Environments
