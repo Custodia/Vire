@@ -1,4 +1,4 @@
-import { http, HttpResponse } from "msw";
+import { http, HttpResponse, ws } from "msw";
 import { addDays } from "../lib/format.js";
 
 // The API's shapes, as the server answers them, for the handlers below to
@@ -210,6 +210,13 @@ export const days = {
   "2026-12-25": { date: "2026-12-25", day: null, activities: [activities.run] },
 };
 
+function matchedSession(activityId) {
+  const session = Object.values(sessions).find((planned) => planned.activity?.id === activityId);
+  return session
+    ? { id: session.id, title: session.title, planned_seconds: session.planned_seconds }
+    : null;
+}
+
 const lap = (lap_index, started_at, elapsed_seconds, fields) => ({
   lap_index,
   started_at,
@@ -233,8 +240,9 @@ const length = (length_index, lap_index, started_at, elapsed_seconds, stroke, st
 });
 
 // GET /api/activities/:id, by id: the summary with the local date, the pool
-// length, the average heart rate, the laps and the pool lengths. A session's matched activity in
-// GET /api/sessions/:id has the same shape.
+// length, the average heart rate, the laps, the pool lengths and the session
+// it is matched to. A session's matched activity in GET /api/sessions/:id has
+// the same shape without the session.
 export const activityDetails = Object.fromEntries(
   [
     {
@@ -311,7 +319,7 @@ export const activityDetails = Object.fromEntries(
       laps: [],
       lengths: [],
     },
-  ].map((activity) => [activity.id, activity]),
+  ].map((activity) => [activity.id, { ...activity, session: matchedSession(activity.id) }]),
 );
 
 // The channels each activity recorded, one value per second from the start.
@@ -368,9 +376,15 @@ function sessionDetail(session) {
   return {
     ...matched,
     day,
-    activity: activityDetails[matched.activity?.id] ?? null,
+    activity: detailWithoutSession(activityDetails[matched.activity?.id]),
     last_time: lastTimes[session.id] ?? null,
   };
+}
+
+function detailWithoutSession(detail) {
+  if (!detail) return null;
+  const { session: _session, ...activity } = detail;
+  return activity;
 }
 
 // The plan's day on a date with the chain above it, as GET /api/days/:date
@@ -430,6 +444,108 @@ export const password = "correct-horse-battery";
 export const mockSession = { signedIn: true, csrfToken: null };
 
 let tokensIssued = 0;
+
+// A sync run as GET /api/sync answers it and the channel pushes it.
+export function syncRun(fields = {}) {
+  return {
+    id: "5c7e0a1b-2d3f-4a5b-8c6d-7e8f9a0b1c01",
+    trigger: "manual",
+    state: "queued",
+    error: null,
+    queued_at: "2026-11-03T08:30:00Z",
+    started_at: null,
+    finished_at: null,
+    files: { total: 0, fetched: 0, failed: 0 },
+    activities: [],
+    ...fields,
+  };
+}
+
+// The sync's state as GET /api/sync answers it and the channel pushes it,
+// last synced at 06:05 on the browser's clock of the 3rd of November.
+export function syncStatus(fields = {}) {
+  return {
+    connection: "active",
+    last_synced_at: new Date(2026, 10, 3, 6, 5).toISOString(),
+    run: null,
+    ...fields,
+  };
+}
+
+// What GET /api/sync answers, and what POST /api/sync refuses with: null to
+// queue a manual run and answer it with 202, or the reason of a 409,
+// "not_connected" or "paused".
+export const mockSync = { status: syncStatus(), refusal: null };
+
+// POST /api/uploads stores a file as pending, and `finishUpload` processes
+// the latest one into an activity, or fails it when its content contains
+// "corrupt", and pushes its status the way the channel does.
+const uploads = new Map();
+
+function uploadAnswer(id) {
+  const { status, error, activityId } = uploads.get(id);
+  return { id, status, processor_version: 1, error, activity_id: activityId };
+}
+
+export function finishUpload({ activityId = activities.ride.id } = {}) {
+  const id = [...uploads.keys()].at(-1);
+  const upload = uploads.get(id);
+  Object.assign(
+    upload,
+    upload.corrupt
+      ? { status: "failed", error: "the file could not be decoded" }
+      : { status: "processed", activityId },
+  );
+  mockLive.push("upload", uploadAnswer(id));
+  return id;
+}
+
+// The user socket: a connection carrying the session's CSRF token may join
+// the signed-in user's topic, as the server's may, and `mockLive.push` sends
+// an event to every joined channel. `mockLive.drop` closes every connection.
+export const mockLive = {
+  channels: new Map(),
+  joins: 0,
+  push(event, payload) {
+    for (const [client, { joinRef, topic }] of this.channels) {
+      client.send(JSON.stringify([joinRef, null, topic, event, payload]));
+    }
+  },
+  drop() {
+    for (const client of this.channels.keys()) client.close();
+    this.channels.clear();
+  },
+};
+
+const userSocket = ws.link(/\/socket\/websocket/);
+
+function acceptSocket({ client }) {
+  const token = client.url.searchParams.get("_csrf_token");
+  if (!mockSession.signedIn || token !== mockSession.csrfToken) {
+    client.close(4403, "forbidden");
+    return;
+  }
+
+  const reply = (joinRef, ref, topic, status, response = {}) =>
+    client.send(JSON.stringify([joinRef, ref, topic, "phx_reply", { status, response }]));
+
+  client.addEventListener("message", (message) => {
+    const [joinRef, ref, topic, event] = JSON.parse(message.data);
+    if (event === "heartbeat") {
+      reply(null, ref, topic, "ok");
+    } else if (event === "phx_join" && topic === `user:${user.id}`) {
+      mockLive.channels.set(client, { joinRef, topic });
+      mockLive.joins += 1;
+      reply(joinRef, ref, topic, "ok");
+    } else if (event === "phx_join") {
+      reply(joinRef, ref, topic, "error", { reason: "unauthorized" });
+    } else if (event === "phx_leave") {
+      mockLive.channels.delete(client);
+      reply(joinRef, ref, topic, "ok");
+    }
+  });
+  client.addEventListener("close", () => mockLive.channels.delete(client));
+}
 
 // The plan GET /api/seasons and GET /api/seasons/:id answer with, around the
 // 3rd of November 2026 the screen tests set the clock to.
@@ -568,6 +684,11 @@ export const mockPlanChanges = { changes: planChanges };
 export function resetMocks() {
   mockSession.signedIn = true;
   mockSession.csrfToken = null;
+  mockSync.status = syncStatus();
+  mockSync.refusal = null;
+  mockLive.channels.clear();
+  mockLive.joins = 0;
+  uploads.clear();
   matches.clear();
   mockPlan.seasons = [seasonEntry];
   mockPlanChanges.changes = planChanges;
@@ -647,6 +768,55 @@ export const handlers = [
   http.get(
     "/api/seasons/:id",
     signedIn(({ params }) => (params.id === season.id ? HttpResponse.json(season) : notFound())),
+  ),
+
+  userSocket.addEventListener("connection", acceptSocket),
+
+  http.get(
+    "/api/sync",
+    signedIn(() => HttpResponse.json(mockSync.status)),
+  ),
+
+  http.post(
+    "/api/sync",
+    signedIn(() => {
+      if (mockSync.refusal) {
+        return HttpResponse.json(
+          { reason: mockSync.refusal, errors: { detail: "The Garmin connection cannot sync" } },
+          { status: 409 },
+        );
+      }
+      mockSync.status = { ...mockSync.status, run: syncRun() };
+      return HttpResponse.json(mockSync.status, { status: 202 });
+    }),
+  ),
+
+  http.post(
+    "/api/uploads",
+    signedIn(async ({ request }) => {
+      const body = await request.text();
+      if (!body.includes('name="file"')) {
+        return HttpResponse.json(
+          { errors: { detail: "the file is not a FIT file" } },
+          { status: 422 },
+        );
+      }
+      const id = `c0ffee00-0000-4000-8000-${String(uploads.size + 1).padStart(12, "0")}`;
+      uploads.set(id, {
+        corrupt: body.includes("corrupt"),
+        status: "pending",
+        error: null,
+        activityId: null,
+      });
+      return HttpResponse.json({ id, status: "pending" }, { status: 201 });
+    }),
+  ),
+
+  http.get(
+    "/api/uploads/:id",
+    signedIn(({ params }) =>
+      uploads.has(params.id) ? HttpResponse.json(uploadAnswer(params.id)) : notFound(),
+    ),
   ),
 
   http.get(

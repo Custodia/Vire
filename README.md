@@ -39,6 +39,10 @@ mix vire.create_user --email ada@example.com --name "Ada Lovelace" \
 The password and the Garmin API key go in as shell variables, so neither appears
 in shell history.
 
+`mix vire.seed_e2e` creates the user the Playwright suite signs in as,
+e2e@example.com with the password `e2e-password-1234` and an invented Garmin
+key, unless it exists. Playwright runs it before the server starts.
+
 Provider API keys are encrypted at rest under a 32-byte credential key. Development
 and test carry a fixed key in their config. Production reads it in base64 from
 `VIRE_CREDENTIAL_KEY`; `openssl rand -base64 32` generates one.

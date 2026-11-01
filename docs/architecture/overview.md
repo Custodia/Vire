@@ -45,6 +45,16 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
   request without a signed-in user. `/api/health`, `/api/csrf` and
   `/api/session` are public.
+- **`/socket`** is the dashboard's WebSocket, websocket transport only
+  ([0012](adr/0012-live-updates.md)). It connects a request carrying the
+  session cookie and the session's CSRF token as `_csrf_token`, for a user who
+  exists, and takes the `live_socket_id` sign-in puts in the session as its
+  id; signing out broadcasts a disconnect to it. Its channel `user:<id>` joins
+  for that user only and pushes `sync`, the state `GET /api/sync` answers,
+  whenever a sync run changes, and `upload`, what `GET /api/uploads/:id`
+  answers, whenever a source file is processed or fails. Contexts publish
+  those changes through `Vire.Events`, on the user's PubSub topic, once they
+  are written.
 - **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
   20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
   its parse job enqueued in one transaction; the answer is 201 with the file's
@@ -52,7 +62,8 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   and enqueues nothing. A missing file or one without a FIT header answers 422.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
-  sit behind the `:authenticated` pipeline.
+  sit behind the `:authenticated` pipeline. Any of the user's source files,
+  uploaded or fetched from Garmin, reads the same way.
 - **`GET /api/days/:date`** answers one date for the dashboard, behind the
   `:authenticated` pipeline: `date`; `day`, with its kind, its note, the chain
   of season, phase, block and cycle above it, the cycle with its kind, the
@@ -82,6 +93,16 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   newest first, behind the `:authenticated` pipeline. A change is its entity,
   action, subject (the name, focus, cycle kind, date or session title of the
   row it acted on), rationale, channel, MCP client name and time.
+- **`GET /api/sync`** answers the state of the user's Garmin sync, behind the
+  `:authenticated` pipeline: `connection`, `active`, `paused` or `none`;
+  `last_synced_at`; and `run`, the latest sync run or `null`. A run is its id,
+  trigger, state, error, the times it was queued, started and finished, its
+  file counts (`total`, `fetched`, `failed`) and the activities it found that
+  Vire did not hold, each a summary with its local date and the session it is
+  matched to, as its id and title, or `null`. **`POST /api/sync`** enqueues a
+  sync of the user's seasons and answers 202 with that state and the run it
+  queued or joined, or 409 with a `reason` of `not_connected` or `paused` when
+  the user has no unpaused Garmin connection.
 - **`GET /api/sessions/:id`** answers a session as a day lists it, with its
   day (id, date, kind, note and chain), its matched activity in full, and
   `last_time`: the latest session before its date with the same discipline
@@ -94,7 +115,8 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   answers 422.
   **`GET /api/activities/:id`** answers an activity in full: its summary, local
   date, pool length, average heart rate (its laps' heart rates weighted by
-  their time), laps and pool lengths.
+  their time), laps, pool lengths and the session it is matched to, as its id,
+  title and planned seconds, or `null`.
   **`GET /api/activities/:id/streams?channels=&step=`** answers the named
   channels, or every recorded one, at `step` seconds per sample; a `step` that
   is not a whole number from 1 answers 400. All four sit behind the
@@ -382,6 +404,17 @@ files and scheduled syncs for every user.
   enqueued only for a user with an unpaused Garmin connection: by the
   three-hourly cron for every such user, for the dates of a season created or
   the dates a season's new period gains, or on request.
+- **A sync run** records one sync from the moment it is queued
+  ([0012](adr/0012-live-updates.md)): its trigger, `manual`, `scheduled` or
+  `plan`; its state, `queued`, `running`, `finished` or `failed` with an
+  error; the activities its searches stored that Vire did not hold; and the
+  downloads it queued, fetched and gave up on. A run finishes once every search
+  has succeeded and every download it queued has been fetched or used up its
+  attempts. A cancelled sync, or one failing on its last attempt, fails the
+  run; a failure it retries keeps the run running with the error. A sync
+  request while one waits answers the waiting run, which a manual request
+  makes manual. A download already kept from an earlier run counts towards
+  that run only.
 - **A download** fetches one activity's file, stores it as a `.fit` file from
   Garmin's API, attaches it to the activity and enqueues its parse, in one
   transaction. A file the user already has is attached as it is; when an
@@ -451,13 +484,15 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   request the server refuses for its token is sent once more with a fresh one.
 - **The frame** holds every signed-in screen and stays put as the screens
   change. A window at least 64rem wide gets the desktop layout: a board under a
-  bar holding the wordmark, links to the calendar and the plan and the Sign out
-  action. A narrower one gets the phone layout: the screen in a column inside
-  the safe area, over tabs for the calendar, the plan and More. More opens a
-  sheet with the user and Sign out. A sheet rises from the bottom edge on a
-  phone and closes when dragged down by its handle; on a desktop it is a card
-  in the middle. A session still planned on a day before the browser's date
-  shows as skipped on every screen; its stored status stays planned.
+  bar holding the wordmark, links to the calendar and the plan, the time of
+  the last sync and the Upload .fit, Sync now and Sign out actions. A narrower
+  one gets the phone layout: the screen in a column inside the safe area, over
+  tabs for the calendar, the plan and More. More opens a sheet with the user,
+  Garmin's last sync with Sync now, Upload .fit and Sign out. A sheet rises
+  from the bottom edge on a phone and closes when dragged down by its handle;
+  on a desktop it is a card in the middle. A session still planned on a day
+  before the browser's date shows as skipped on every screen; its stored
+  status stays planned.
 - **States** draw the same on every screen. A session is a ring: thick with a
   tick when done, thin in its discipline's colour while upcoming, thin with a
   cross when skipped, and thick grey with a plus for an activity no session is
@@ -466,6 +501,35 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   each arc thick when done and thin otherwise, circled in the accent on today.
   A day without sessions is a dashed ring and a Rest chip, green and ticked once
   it is past.
+- **Live updates** ([0012](adr/0012-live-updates.md)): the frame connects to
+  `/socket` with the session's CSRF token and joins `user:<id>`. A `sync` push
+  replaces the cached `GET /api/sync`, and an `upload` push the cached
+  `GET /api/uploads/:id` of its file. A run that finishes and a file that is
+  processed refresh the cached days, seasons, sessions and activities. Every
+  join, the first and each after a dropped connection, reads the sync and the
+  uploads again. A connection the server refuses is tried again with the CSRF
+  token fetched anew.
+- **Toasts** show in a labelled region at the top of the frame, at its right on
+  a desktop. A caution toast is an alert and stays until hidden; the others
+  are a status, and one with a timeout hides itself once it passes without the
+  pointer or the focus on it. Showing a toast with the id of one shown
+  replaces it in place.
+- **Upload .fit** opens a sheet with a drop zone and a file chooser. It posts
+  the `.fit` file to `POST /api/uploads`, reads `GET /api/uploads/:id` once,
+  and follows the file's pushes through Uploaded and Reading the file. A
+  processed file shows its activity tinted by its discipline, with its date,
+  start, duration, distance and average heart rate, and the session it is
+  matched to or Not in the plan, linking to the session or the activity. A
+  file the server refuses or cannot read says why and offers another.
+- **Sync now** posts `POST /api/sync`; the button shows Syncing… while the
+  request is sent or the latest run is queued or running, whatever started it.
+  Beside the bar's actions stands the time of the last sync, or that Garmin is
+  syncing or paused. A manual run shows a toast while it runs, with the files
+  fetched once it has some. A run that finishes with activities shows each one
+  with its day, duration and matched session, and hides after eight seconds;
+  a manual run that finds nothing says so and hides after five. A run that
+  fails stays as a caution toast: the connection is paused, or the sync did not
+  finish, with Try again. A refused request says why.
 - **The calendar** shows a month, a week or a day around a date, at
   `/calendar/:view/:date`. It reads `GET /api/days` for the dates the view
   shows, under the query key `["days", from, to]`, prefetches the periods on
@@ -557,7 +621,7 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 
 | Environment | Server | Database | Jobs | Credential key | Node | Garmin API |
 | --- | --- | --- | --- | --- | --- | --- |
-| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
+| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` and `/socket` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
 | test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder | `Req.Test` stubs; the base URL is 127.0.0.1:9, where nothing listens |
 | test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running, without the cron | Fixed in `config/test.exs` | The FIT decoder | 127.0.0.1:9, where nothing listens |
 | prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running, with the cron | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it | `personal.connectapi.garmin.com` |

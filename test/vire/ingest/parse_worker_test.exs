@@ -9,6 +9,7 @@ defmodule Vire.Ingest.ParseWorkerTest do
   alias Vire.Activities.ActivityStream
   alias Vire.Activities.Lap
   alias Vire.Activities.Length
+  alias Vire.Events
   alias Vire.Ingest
   alias Vire.Ingest.ParseWorker
   alias Vire.Ingest.SourceFile
@@ -317,5 +318,30 @@ defmodule Vire.Ingest.ParseWorkerTest do
     tmp = elem(@crc_table, crc &&& 0xF)
     crc = crc >>> 4 &&& 0x0FFF
     bxor(bxor(crc, tmp), elem(@crc_table, nibble))
+  end
+
+  describe "the file's status" do
+    setup %{scope: scope} do
+      :ok = Events.subscribe(scope)
+    end
+
+    test "is published once the file is processed", %{scope: scope} do
+      {:stored, %SourceFile{id: id}} =
+        Ingest.store_fit_file(scope, fit_fixture("ride.fit"), :upload)
+
+      %{success: 1} = Oban.drain_queue(queue: :ingest)
+
+      assert_receive {:source_file, %SourceFile{id: ^id, status: :processed, content: nil}}
+    end
+
+    test "is published once the file has failed", %{scope: scope} do
+      {:stored, %SourceFile{id: id}} =
+        Ingest.store_fit_file(scope, fit_fixture("corrupt.fit"), :upload)
+
+      %{cancelled: 1} = Oban.drain_queue(queue: :ingest)
+
+      assert_receive {:source_file, %SourceFile{id: ^id, status: :failed, error: error}}
+      assert error =~ "integrity check failed"
+    end
   end
 end

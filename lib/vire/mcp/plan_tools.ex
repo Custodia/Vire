@@ -257,8 +257,8 @@ defmodule Vire.Mcp.PlanTools do
       %Tool{
         name: "sync_now",
         description:
-          "Enqueues a Garmin sync of every season and answers the job's id. Activities " <>
-            "arrive and are matched to sessions as the job runs.",
+          "Enqueues a Garmin sync of every season and answers its run's id and state. " <>
+            "Activities arrive and are matched to sessions as the run goes.",
         input_schema: object(%{}),
         function: &sync_now/2
       }
@@ -436,7 +436,7 @@ defmodule Vire.Mcp.PlanTools do
 
   defp sync_now(scope, _args) do
     case Ingest.sync_now(scope) do
-      {:ok, job} -> {:ok, %{job_id: job.id}}
+      {:ok, run} -> {:ok, %{run_id: run.id, state: run.state}}
       {:error, :not_connected} -> {:error, "The athlete has no Garmin connection"}
       {:error, :paused} -> {:error, "The athlete's Garmin connection is paused"}
       {:error, reason} -> {:error, reason}

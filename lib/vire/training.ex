@@ -115,6 +115,15 @@ defmodule Vire.Training do
   defp own_title(%Session{structure: %{"title" => title}}) when is_binary(title), do: title
   defp own_title(%Session{}), do: ""
 
+  @doc "The scope's sessions matched to the activities with `activity_ids`, by activity id."
+  def list_matched_sessions(%Scope{} = scope, activity_ids) when is_list(activity_ids) do
+    Session
+    |> for_user(scope)
+    |> where([s], s.activity_id in ^activity_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.activity_id, &1})
+  end
+
   @doc """
   The scope's activities on the local `date`, or on the local dates a period
   holds, that no session is matched to, earliest first.
@@ -462,7 +471,7 @@ defmodule Vire.Training do
   defp request_sync(_scope, nil), do: :ok
 
   defp request_sync(%Scope{} = scope, %Period{} = period) do
-    Ingest.enqueue_sync(scope, period)
+    Ingest.enqueue_sync(scope, period, :plan)
     :ok
   end
 

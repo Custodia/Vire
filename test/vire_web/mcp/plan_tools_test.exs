@@ -386,9 +386,12 @@ defmodule VireWeb.Mcp.PlanToolsTest do
 
     connection = provider_connection_fixture(user)
 
-    assert %{"job_id" => job_id} = ok!(token, "sync_now", %{})
-    assert_enqueued(worker: SyncWorker, args: %{"user_id" => user.id, "first" => nil})
-    assert is_integer(job_id)
+    assert %{"run_id" => run_id, "state" => "queued"} = ok!(token, "sync_now", %{})
+
+    assert_enqueued(
+      worker: SyncWorker,
+      args: %{"user_id" => user.id, "first" => nil, "run_id" => run_id}
+    )
 
     {:ok, _paused} =
       Vire.Accounts.pause_provider_connection(Scope.for_user(user), connection)
