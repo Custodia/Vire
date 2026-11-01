@@ -8,6 +8,7 @@ import {
 import { ApiError } from "./api/client.js";
 import { meQuery } from "./api/queries.js";
 import { ErrorScreen } from "./screens/error.jsx";
+import { AppFrame } from "./screens/frame.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
 import { TodayScreen } from "./screens/today.jsx";
 
@@ -36,7 +37,7 @@ const authenticatedRoute = createRoute({
       throw error;
     }
   },
-  component: Outlet,
+  component: AppFrame,
 });
 
 const indexRoute = createRoute({

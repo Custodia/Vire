@@ -1,4 +1,4 @@
-/** The page shell: the ground colour, the boards' padding inside the safe area, a readable width. */
+/** The signed-out page shell: a narrow column on the ground colour, inside the safe area. */
 export function Screen({ children }) {
   return (
     <div className="min-h-dvh bg-ground font-body text-ink">
