@@ -5,6 +5,8 @@ import { sessions } from "../mocks/handlers.js";
 import { Button } from "./Button.jsx";
 import { CoachNote } from "./CoachNote.jsx";
 import { DisciplineIcon } from "./DisciplineIcon.jsx";
+import { Frame } from "./Frame.jsx";
+import { PageHeader } from "./PageHeader.jsx";
 import { Screen } from "./Screen.jsx";
 import { SessionCard } from "./SessionCard.jsx";
 import { SessionRow } from "./SessionRow.jsx";
@@ -20,6 +22,14 @@ describe("Stat", () => {
 
     expect(screen.getByText("35′")).toBeInTheDocument();
     expect(screen.getByText("Duration")).toBeInTheDocument();
+  });
+
+  test("shows what the number counts towards", () => {
+    render(<Stat value={7} of={11} label="sessions done this week" />);
+
+    expect(screen.getByText("sessions done this week").previousSibling).toHaveTextContent(
+      "7 of 11",
+    );
   });
 });
 
@@ -201,6 +211,35 @@ describe("TextField", () => {
     render(<TextField label="Password" type="password" />);
 
     expect(screen.getByLabelText("Password")).toBeValid();
+  });
+});
+
+describe("Frame", () => {
+  test("puts the bar above the page's main landmark", () => {
+    render(
+      <Frame bar={<header>vire</header>}>
+        <h1>Today</h1>
+      </Frame>,
+    );
+
+    expect(screen.getByRole("banner")).toHaveTextContent("vire");
+    expect(within(screen.getByRole("main")).getByRole("heading", { name: "Today" })).toBeVisible();
+  });
+});
+
+describe("PageHeader", () => {
+  test("titles the page under its label, with its line and figures", () => {
+    render(
+      <PageHeader label="Goal" title="Autumn 10 km" detail="Ten kilometres in December.">
+        <Stat value={8} label="weeks to go" />
+      </PageHeader>,
+    );
+
+    const header = screen.getByRole("banner");
+    expect(within(header).getByRole("heading", { level: 1, name: "Autumn 10 km" })).toBeVisible();
+    expect(header).toHaveTextContent("Goal");
+    expect(header).toHaveTextContent("Ten kilometres in December.");
+    expect(header).toHaveTextContent("8weeks to go");
   });
 });
 
