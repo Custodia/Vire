@@ -1,0 +1,21 @@
+/* Every colour, font, radius and spacing step the dashboard uses. Each one is a
+   custom property on :root and a Tailwind utility. */
+@theme static {
+  --color-*: initial;
+  --color-ground: #0f1115;
+  --color-surface: #171a20;
+  --color-ink: #eef0f3;
+  --color-muted: #9aa3ad;
+  --color-accent: #c6f135;
+
+  --font-*: initial;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-body: "Inter", system-ui, sans-serif;
+  --default-font-family: var(--font-body);
+
+  --radius-*: initial;
+  --radius-card: 18px;
+  --radius-chip: 6px;
+
+  --spacing: 4px;
+}
