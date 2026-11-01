@@ -8,6 +8,7 @@ defmodule Vire.DataCase do
       alias Vire.Repo
 
       import Vire.AccountsFixtures
+      import Vire.ActivitiesFixtures
       import Vire.TrainingFixtures
       import Vire.DataCase, only: [errors_on: 1]
     end
