@@ -72,6 +72,14 @@ defmodule Vire.Training do
     |> Repo.preload([:context, sessions: sessions_query(scope)])
   end
 
+  @doc """
+  The scope's activities on the local `date`, or on the local dates a period
+  holds, that no session is matched to, earliest first.
+  """
+  def list_unmatched_activities(%Scope{} = scope, dates) do
+    scope |> unmatched_activities(dates) |> Repo.all()
+  end
+
   ## Seasons, phases, blocks and cycles
 
   @doc """
@@ -336,6 +344,21 @@ defmodule Vire.Training do
     end
   end
 
+  @doc """
+  The scope's latest `limit` plan changes, newest first, each paired with the
+  name of the MCP client that made it, or `nil`.
+  """
+  def list_recent_changes(%Scope{} = scope, limit) do
+    from(c in for_user(PlanChange, scope),
+      left_join: client in Vire.Mcp.Client,
+      on: client.id == c.mcp_client_id,
+      order_by: [desc: c.inserted_at, desc: c.id],
+      limit: ^limit,
+      select: {c, client.name}
+    )
+    |> Repo.all()
+  end
+
   ## Helpers
 
   defp pair(activities, sessions) when length(activities) == length(sessions) do
@@ -346,10 +369,11 @@ defmodule Vire.Training do
 
   defp pair(_activities, _sessions), do: []
 
-  defp unmatched_activities(scope, date) do
-    from a in for_user(Activity, scope),
+  defp unmatched_activities(scope, dates) do
+    activities = Activity |> for_user(scope) |> on_local_dates(dates)
+
+    from a in activities,
       as: :activity,
-      where: a.local_date == ^date,
       where: not exists(from s in Session, where: s.activity_id == parent_as(:activity).id),
       order_by: [a.started_at, a.id]
   end
@@ -615,4 +639,9 @@ defmodule Vire.Training do
     do: where(query, [d], d.day >= ^first and d.day <= ^last)
 
   defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
+
+  defp on_local_dates(query, %Date{} = date), do: where(query, [a], a.local_date == ^date)
+
+  defp on_local_dates(query, %Period{first: first, last: last}),
+    do: where(query, [a], a.local_date >= ^first and a.local_date <= ^last)
 end

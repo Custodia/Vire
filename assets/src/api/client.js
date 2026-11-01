@@ -93,3 +93,9 @@ export async function signOut() {
   await api("/session", { method: "DELETE" });
   forgetCsrfToken();
 }
+
+export const getSeasons = () => api("/seasons");
+
+export const getSeason = (id) => api(`/seasons/${encodeURIComponent(id)}`);
+
+export const getPlanChanges = () => api("/plan_changes");
