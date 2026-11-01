@@ -60,4 +60,31 @@ defmodule Vire.Accounts do
     |> where(user_id: ^user_id, provider: ^provider)
     |> Repo.one()
   end
+
+  @doc "Every user's unpaused connection to `provider`, with its user."
+  def list_unpaused_provider_connections(provider) do
+    ProviderConnection
+    |> where(provider: ^provider)
+    |> where([c], is_nil(c.paused_at))
+    |> preload(:user)
+    |> Repo.all()
+  end
+
+  @doc "Records that the scope's connection finished a sync now."
+  def mark_provider_connection_synced(%Scope{} = scope, %ProviderConnection{} = connection),
+    do: update_connection_time(scope, connection, :last_synced_at)
+
+  @doc "Pauses the scope's connection, so no sync uses it."
+  def pause_provider_connection(%Scope{} = scope, %ProviderConnection{} = connection),
+    do: update_connection_time(scope, connection, :paused_at)
+
+  defp update_connection_time(
+         %Scope{user: %User{id: user_id}},
+         %ProviderConnection{user_id: user_id} = connection,
+         field
+       ) do
+    connection
+    |> Ecto.Changeset.change(%{field => DateTime.utc_now()})
+    |> Repo.update()
+  end
 end

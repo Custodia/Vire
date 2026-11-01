@@ -25,6 +25,7 @@ A record states what is settled. A question still open is named in
 | [0006](0006-training-plan-storage.md) | Training plan storage | Accepted |
 | [0007](0007-source-file-storage.md) | Source file storage | Accepted |
 | [0008](0008-fit-decoding.md) | FIT decoding | Accepted |
+| [0009](0009-garmin-sync.md) | Garmin sync | Accepted |
 
 ## Status
 

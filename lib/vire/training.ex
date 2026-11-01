@@ -14,6 +14,8 @@ defmodule Vire.Training do
   import Ecto.Query
 
   alias Vire.Accounts.Scope
+  alias Vire.Activities.Activity
+  alias Vire.Ingest
   alias Vire.Repo
   alias Vire.Training.Block
   alias Vire.Training.Constraints
@@ -24,6 +26,8 @@ defmodule Vire.Training do
   alias Vire.Training.PlanChange
   alias Vire.Training.Season
   alias Vire.Training.Session
+
+  @match_lock_space 1_098_215_014
 
   ## Reads
 
@@ -70,10 +74,19 @@ defmodule Vire.Training do
 
   ## Seasons, phases, blocks and cycles
 
-  @doc "Creates a season from a name, a period and a rationale."
+  @doc """
+  Creates a season from a name, a period and a rationale, and enqueues a
+  Garmin sync of its dates for a user with an unpaused Garmin connection.
+  """
   def create_season(%Scope{user: user} = scope, attrs) do
     changeset = Season.changeset(%Season{user_id: user.id}, attrs)
-    logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
+
+    logged(scope, nil, nil, fn ->
+      with {:ok, season} <- Repo.insert(changeset) do
+        request_sync(scope, season.period)
+        {:ok, season}
+      end
+    end)
   end
 
   @doc "Creates a phase in a season from a name, a period and a rationale."
@@ -111,9 +124,21 @@ defmodule Vire.Training do
     end
   end
 
-  @doc "Changes a season's name, period or rationale."
-  def update_season(%Scope{} = scope, id, attrs, rationale),
-    do: update_level(scope, Season, id, attrs, rationale)
+  @doc """
+  Changes a season's name, period or rationale. A period that gains dates
+  enqueues a Garmin sync of the dates it gained, for a user with an unpaused
+  Garmin connection.
+  """
+  def update_season(%Scope{} = scope, id, attrs, rationale) do
+    with {:ok, season} <- fetch_for_write(scope, Season, id) do
+      changeset =
+        season
+        |> Season.changeset(attrs)
+        |> Constraints.require_rationale(rationale)
+
+      logged(scope, season, rationale, fn -> update_widening(scope, season, changeset) end)
+    end
+  end
 
   @doc "Changes a phase's name, period or rationale."
   def update_phase(%Scope{} = scope, id, attrs, rationale),
@@ -215,6 +240,82 @@ defmodule Vire.Training do
     end
   end
 
+  ## Matching
+
+  @doc """
+  Matches the scope's activities on the local `date` to that day's sessions.
+
+  For each discipline, the day's unmatched activities by start time are
+  paired one to one with its unmatched sessions of that discipline by
+  position, when their counts are equal; when they differ, none of that
+  discipline is matched. A matched session is done. A session whose match was
+  set or cleared by hand is left out. Automatic matches are not logged.
+  """
+  def match_activities(%Scope{user: user} = scope, %Date{} = date) do
+    {:ok, _paired} =
+      Repo.transact(fn ->
+        lock_matching(user.id)
+
+        sessions =
+          scope |> unmatched_sessions(date) |> Repo.all() |> Enum.group_by(& &1.discipline)
+
+        paired =
+          scope
+          |> unmatched_activities(date)
+          |> Repo.all()
+          |> Enum.group_by(& &1.discipline)
+          |> Enum.flat_map(fn {discipline, activities} ->
+            pair(activities, Map.get(sessions, discipline, []))
+          end)
+
+        {:ok, paired}
+      end)
+
+    :ok
+  end
+
+  @doc """
+  Matches the scope's session with `session_id` to the scope's activity with
+  `activity_id` on the session's date, making it done, or clears its match
+  with `nil`, making it planned. The change is logged with `rationale`.
+
+  An activity on another date is refused with `{:error, :different_date}`.
+  """
+  def match_session(%Scope{user: user} = scope, session_id, activity_id, rationale) do
+    with %Session{} = session <- session_with_date(scope, session_id) || {:error, :not_found},
+         {:ok, activity_id} <- activity_on(scope, session.date, activity_id) do
+      changeset =
+        session
+        |> Session.match_changeset(activity_id)
+        |> Constraints.require_rationale(rationale)
+
+      logged(scope, session, rationale, fn ->
+        lock_matching(user.id)
+        Repo.update(changeset)
+      end)
+    end
+  end
+
+  @doc """
+  Marks the scope's sessions still planned on a date before `today` within
+  `periods` as skipped. Returns the number of sessions marked.
+  """
+  def skip_missed_sessions(%Scope{} = scope, periods, %Date{} = today) do
+    Enum.sum_by(periods, fn %Period{first: first, last: last} ->
+      {count, _sessions} =
+        Repo.update_all(
+          from(s in for_user(Session, scope),
+            join: d in assoc(s, :day),
+            where: s.status == :planned,
+            where: d.day >= ^first and d.day <= ^last and d.day < ^today
+          ),
+          set: [status: :skipped, updated_at: DateTime.utc_now()]
+        )
+
+      count
+    end)
+  end
+
   ## Change log
 
   @doc """
@@ -236,6 +337,84 @@ defmodule Vire.Training do
   end
 
   ## Helpers
+
+  defp pair(activities, sessions) when length(activities) == length(sessions) do
+    Enum.zip_with(activities, sessions, fn activity, session ->
+      session |> Session.match_changeset(activity.id) |> Repo.update!()
+    end)
+  end
+
+  defp pair(_activities, _sessions), do: []
+
+  defp unmatched_activities(scope, date) do
+    from a in for_user(Activity, scope),
+      as: :activity,
+      where: a.local_date == ^date,
+      where: not exists(from s in Session, where: s.activity_id == parent_as(:activity).id),
+      order_by: [a.started_at, a.id]
+  end
+
+  defp unmatched_sessions(%Scope{user: user} = scope, date) do
+    matched_by_hand =
+      from c in PlanChange,
+        where: c.user_id == ^user.id and c.entity == :training_session and c.action == :update,
+        where: c.entity_id == parent_as(:session).id,
+        where: fragment("?->'activity_id' is distinct from ?->'activity_id'", c.before, c.after)
+
+    from s in for_user(Session, scope),
+      as: :session,
+      join: d in assoc(s, :day),
+      where: d.day == ^date and is_nil(s.activity_id),
+      where: not exists(matched_by_hand),
+      order_by: s.position
+  end
+
+  defp activity_on(_scope, _date, nil), do: {:ok, nil}
+
+  defp activity_on(scope, date, activity_id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(activity_id),
+         %Activity{local_date: local_date} <- Activity |> for_user(scope) |> Repo.get(uuid) do
+      if local_date == date, do: {:ok, uuid}, else: {:error, :different_date}
+    else
+      _missing -> {:error, :not_found}
+    end
+  end
+
+  # A parse, a provider summary and a hand match can reach the same day at
+  # once; the lock keeps them from pairing one activity twice.
+  defp lock_matching(user_id),
+    do: Repo.query!("select pg_advisory_xact_lock(#{@match_lock_space}, hashtext($1))", [user_id])
+
+  defp update_widening(scope, season, changeset) do
+    with {:ok, updated} <- Repo.update(changeset) do
+      request_sync(scope, gained(season.period, updated.period))
+      {:ok, updated}
+    end
+  end
+
+  defp request_sync(_scope, nil), do: :ok
+
+  defp request_sync(%Scope{} = scope, %Period{} = period) do
+    Ingest.enqueue_sync(scope, period)
+    :ok
+  end
+
+  # The dates `new` holds and `old` does not, as one period spanning them.
+  defp gained(%Period{} = old, %Period{} = new) do
+    earlier =
+      if Date.before?(new.first, old.first),
+        do: Period.new(new.first, Enum.min([new.last, Date.add(old.first, -1)], Date))
+
+    later =
+      if Date.after?(new.last, old.last),
+        do: Period.new(Enum.max([new.first, Date.add(old.last, 1)], Date), new.last)
+
+    case {earlier, later} do
+      {nil, later} -> later
+      {earlier, nil} -> earlier
+      {earlier, later} -> Period.new(earlier.first, later.last)
+    end
+  end
 
   defp next_cycle_period(%Block{period: block_period} = block) do
     latest_end =

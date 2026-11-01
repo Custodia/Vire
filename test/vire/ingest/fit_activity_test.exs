@@ -17,6 +17,18 @@ defmodule Vire.Ingest.FitActivityTest do
     assert FitActivity.discipline(nil, nil) == :other
   end
 
+  test "maps Garmin's activity type keys to disciplines" do
+    assert FitActivity.discipline("road_biking", nil) == :bike
+    assert FitActivity.discipline("virtual_ride", nil) == :bike
+    assert FitActivity.discipline("indoor_cycling", nil) == :bike
+    assert FitActivity.discipline("trail_running", nil) == :run
+    assert FitActivity.discipline("treadmill_running", nil) == :run
+    assert FitActivity.discipline("lap_swimming", nil) == :swim
+    assert FitActivity.discipline("open_water_swimming", nil) == :swim
+    assert FitActivity.discipline("strength_training", nil) == :strength
+    assert FitActivity.discipline("yoga", nil) == :other
+  end
+
   test "without a session, starts at the first record, in UTC, for the records' span" do
     records = [
       %{"timestamp" => "not a time"},
