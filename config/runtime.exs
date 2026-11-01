@@ -7,8 +7,9 @@ end
 # The Playwright suite drives the test configuration as a real server.
 if config_env() == :test and System.get_env("VIRE_E2E") == "true" do
   config :vire, Vire.Repo, database: "vire_e2e", pool: DBConnection.ConnectionPool
-  config :vire, VireWeb.Endpoint, server: true, check_origin: ["//127.0.0.1"]
-  config :vire, Oban, testing: :disabled
+  config :vire, VireWeb.Endpoint, check_origin: ["//127.0.0.1"]
+  # Nothing answers for Garmin here, so a sync that ran would pause the connection.
+  config :vire, Oban, testing: :disabled, queues: [garmin: [limit: 1, paused: true]]
   config :vire, Vire.Ingest.Garmin, req_options: [plug: nil]
 end
 
