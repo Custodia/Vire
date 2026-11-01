@@ -11,7 +11,10 @@ import { ErrorScreen } from "./screens/error.jsx";
 import { AppFrame } from "./screens/frame.jsx";
 import { PlanScreen } from "./screens/plan.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
-import { TodayScreen } from "./screens/today.jsx";
+import { CalendarScreen } from "./screens/calendar.jsx";
+import { ActivityScreen, SessionScreen } from "./screens/session-page.jsx";
+import { localDate } from "./lib/format.js";
+import { calendarView } from "./lib/links.js";
 
 const rootRoute = createRootRouteWithContext()({
   component: Outlet,
@@ -45,14 +48,25 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    throw redirect({ to: "/today" });
+    throw redirect({ to: "/calendar" });
   },
 });
 
-const todayRoute = createRoute({
+const calendarIndexRoute = createRoute({
   getParentRoute: () => authenticatedRoute,
-  path: "/today",
-  component: TodayScreen,
+  path: "/calendar",
+  beforeLoad: () => {
+    throw redirect({
+      to: "/calendar/$view/$date",
+      params: { view: calendarView(), date: localDate() },
+    });
+  },
+});
+
+const calendarRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/calendar/$view/$date",
+  component: CalendarScreen,
 });
 
 const planRoute = createRoute({
@@ -64,10 +78,28 @@ const planRoute = createRoute({
   component: PlanScreen,
 });
 
+const sessionRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/sessions/$id",
+  component: SessionScreen,
+});
+
+const activityRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/activities/$id",
+  component: ActivityScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
-  authenticatedRoute.addChildren([todayRoute, planRoute]),
+  authenticatedRoute.addChildren([
+    calendarIndexRoute,
+    calendarRoute,
+    planRoute,
+    sessionRoute,
+    activityRoute,
+  ]),
 ]);
 
 export function createAppRouter({ queryClient, ...options }) {

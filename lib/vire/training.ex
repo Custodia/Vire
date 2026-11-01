@@ -63,14 +63,57 @@ defmodule Vire.Training do
   end
 
   @doc """
-  The day on `date`, with the cycle, block, phase and season above it as
-  `context` and its sessions in position order, or `nil`.
+  The day on `date`, with its cycle, the cycle, block, phase and season above
+  it as `context`, and its sessions in position order, or `nil`.
   """
   def get_day(%Scope{} = scope, %Date{} = date) do
     scope
     |> day_on(date)
-    |> Repo.preload([:context, sessions: sessions_query(scope)])
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
   end
+
+  @doc """
+  The days a period holds, each loaded as `get_day/2` loads it, in date order.
+  A date outside every cycle has no day.
+  """
+  def list_days(%Scope{} = scope, %Period{} = period) do
+    Day
+    |> for_user(scope)
+    |> on_days(period)
+    |> order_by(:day)
+    |> Repo.all()
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
+  end
+
+  @doc """
+  The scope's session with `id`, with its date and its day, the day loaded as
+  `get_day/2` loads it without its sessions, or `nil`.
+  """
+  def get_session(%Scope{} = scope, id) do
+    case session_with_date(scope, id) do
+      nil -> nil
+      session -> Repo.preload(session, day: [:cycle, :context])
+    end
+  end
+
+  @doc """
+  The scope's latest session before `session`'s date that has its discipline
+  and title and is matched to an activity, with its date, or `nil`.
+  """
+  def get_previous_session(%Scope{} = scope, %Session{date: %Date{} = date} = session) do
+    scope
+    |> sessions_query()
+    |> exclude(:order_by)
+    |> where([s, d], s.discipline == ^session.discipline and not is_nil(s.activity_id))
+    |> where([s, d], d.day < ^date)
+    |> where([s], fragment("coalesce(?->>'title', '')", s.structure) == ^own_title(session))
+    |> order_by([s, d], desc: d.day, desc: s.position)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp own_title(%Session{structure: %{"title" => title}}) when is_binary(title), do: title
+  defp own_title(%Session{}), do: ""
 
   @doc """
   The scope's activities on the local `date`, or on the local dates a period

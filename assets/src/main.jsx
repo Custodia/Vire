@@ -1,12 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createQueryClient } from "./api/query-client.js";
 import { App } from "./app.jsx";
-import { createAppRouter } from "./router.jsx";
+import { createApp } from "./create-app.js";
 import "./styles/app.css";
 
-const queryClient = createQueryClient();
-const router = createAppRouter({ queryClient });
+const { queryClient, router } = createApp();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

@@ -1,5 +1,7 @@
+import { Link } from "@tanstack/react-router";
 import { discipline as disciplineOf } from "../lib/disciplines.js";
 import { formatDayAndMonth, formatHours, formatMonthName, formatPlanned } from "../lib/format.js";
+import { calendarLink } from "../lib/links.js";
 import {
   blockNumbers,
   blocksOf,
@@ -217,14 +219,14 @@ export function WeeklyHours({ season, today, place }) {
           className="group absolute bottom-0 h-full px-px"
           style={place.span(week.period)}
         >
-          <div
-            role="group"
-            aria-label={`Week of ${formatDayAndMonth(week.period.first)}`}
+          <Link
+            {...calendarLink("week", covers(week.period, today) ? today : week.period.first)}
             aria-describedby={`week-${week.period.first}`}
-            className="relative h-full"
+            className="focus-ring relative block h-full"
           >
+            <span className="sr-only">Week of {formatDayAndMonth(week.period.first)}</span>
             <WeekBar week={week} progress={progressOf(week.period, today)} most={most} />
-          </div>
+          </Link>
           <WeekCard week={week} today={today} end={index >= weeks.length / 2} />
         </li>
       ))}
