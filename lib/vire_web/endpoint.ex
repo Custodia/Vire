@@ -1,6 +1,16 @@
 defmodule VireWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :vire
 
+  @session_options [
+    store: :cookie,
+    key: "_vire_session",
+    signing_salt: "tuUStOrb",
+    encryption_salt: "Bv51Hzsx",
+    http_only: true,
+    same_site: "Lax",
+    secure: Application.compile_env(:vire, :secure_session_cookie, false)
+  ]
+
   # Vite names every file under assets/ after a hash of its content.
   plug Plug.Static,
     at: "/",
@@ -27,5 +37,6 @@ defmodule VireWeb.Endpoint do
     json_decoder: Phoenix.json_library()
 
   plug Plug.Head
+  plug Plug.Session, @session_options
   plug VireWeb.Router
 end

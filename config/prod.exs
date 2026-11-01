@@ -6,4 +6,6 @@ config :vire, VireWeb.Endpoint,
     exclude: [hosts: ["localhost", "127.0.0.1"], paths: ["/api/health"]]
   ]
 
+config :vire, :secure_session_cookie, true
+
 config :logger, level: :info

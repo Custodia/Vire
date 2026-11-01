@@ -30,6 +30,20 @@ if config_env() == :prod do
       You can generate one by calling: mix phx.gen.secret
       """
 
+  credential_key =
+    with encoded when is_binary(encoded) <- System.get_env("VIRE_CREDENTIAL_KEY"),
+         {:ok, key} when byte_size(key) == 32 <- Base.decode64(encoded) do
+      key
+    else
+      _ ->
+        raise """
+        environment variable VIRE_CREDENTIAL_KEY is missing or is not 32 bytes in base64.
+        You can generate one by calling: openssl rand -base64 32
+        """
+    end
+
+  config :vire, :credential_key, credential_key
+
   host = System.get_env("PHX_HOST") || "localhost"
   port = String.to_integer(System.get_env("PORT") || "4000")
 

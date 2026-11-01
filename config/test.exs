@@ -15,6 +15,10 @@ config :vire, VireWeb.Endpoint,
 
 config :vire, Oban, testing: :manual
 
+config :vire, :credential_key, Base.decode64!("Fx1NFCZJdHxZRnhgYGmHFoyjtPtXnfF4X0JE6g1dFRg=")
+
+config :bcrypt_elixir, log_rounds: 1
+
 config :logger, level: :warning
 
 config :phoenix, :plug_init_mode, :runtime

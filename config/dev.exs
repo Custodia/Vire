@@ -18,6 +18,8 @@ config :vire, VireWeb.Endpoint,
     npm: ["run", "dev", cd: Path.expand("../assets", __DIR__)]
   ]
 
+config :vire, :credential_key, Base.decode64!("6s3ZFtEvMeIqkS/3YDLfy0xxuW4jtTEjaOfka8is3Gs=")
+
 config :logger, :default_formatter, format: "[$level] $message\n"
 
 config :phoenix, :stacktrace_depth, 20
