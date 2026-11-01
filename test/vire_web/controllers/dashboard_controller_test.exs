@@ -30,7 +30,14 @@ defmodule VireWeb.DashboardControllerTest do
     test "serves the web app manifest", %{conn: conn} do
       conn = get(conn, "/manifest.webmanifest")
 
-      assert %{"start_url" => "/today"} = Jason.decode!(response(conn, 200))
+      assert %{"start_url" => "/today", "display" => "standalone", "icons" => icons} =
+               Jason.decode!(response(conn, 200))
+
+      for %{"src" => src} <- icons do
+        assert response(get(build_conn(), src), 200)
+      end
+
+      assert response(get(build_conn(), "/apple-touch-icon.png"), 200)
     end
   end
 

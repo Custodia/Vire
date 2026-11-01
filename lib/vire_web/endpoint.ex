@@ -21,7 +21,8 @@ defmodule VireWeb.Endpoint do
   plug Plug.Static,
     at: "/",
     from: :vire,
-    only: ~w(favicon.svg manifest.webmanifest robots.txt)
+    only:
+      ~w(favicon.svg apple-touch-icon.png icon-192.png icon-512.png manifest.webmanifest robots.txt)
 
   if code_reloading? do
     plug Phoenix.CodeReloader

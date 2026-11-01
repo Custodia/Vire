@@ -431,18 +431,28 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 - **Unsafe requests** carry the session's CSRF token, which the dashboard fetches
   from `GET /api/csrf` before the first one and forgets on signing in and out. A
   request the server refuses for its token is sent once more with a fresh one.
-- Tailwind v4 takes its colours, fonts, radii, spacing step and the text sizes
-  the boards add to Tailwind's scale from `src/styles/tokens.css`
+- **The frame** holds every signed-in screen and stays put as the screens
+  change. A window at least 64rem wide gets the desktop layout: a board under a
+  bar holding the wordmark, links to the screens and the Sign out action. A
+  narrower one gets the phone layout: the screen in a column inside the safe
+  area, over tabs for the screens and More. More opens a sheet with the user
+  and Sign out. A sheet rises from the bottom edge on a phone and closes when
+  dragged down by its handle; on a desktop it is a card in the middle.
+- Tailwind v4 takes its colours, fonts, radii, spacing step, board width and
+  the text sizes the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
   colours, fonts and radii cleared. Other text sizes, tracking, weights and
   container widths come from Tailwind's defaults. Inter and Barlow Condensed
   are bundled from fontsource packages.
 - `src/ui/` holds the components screens are built from, one per file: `Stat`,
   `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
-  `SessionCard`, `SessionRow`, `CoachNote`, `Button`, `TextField` and the
-  `Screen` shell. `WorkoutProfile` draws a session's steps as an SVG of bars as
-  wide as their seconds and as tall as their zone, with repeats written out.
-- A web app manifest starts the installed app at `/today`.
+  `SessionCard`, `SessionRow`, `CoachNote`, `Button`, `TextField`, `Card`,
+  `PageHeader`, `TopBar`, `TabBar`, `Sheet`, the signed-in `Frame` and
+  `PhoneFrame` and the signed-out `Screen`, a narrow column. `WorkoutProfile`
+  draws a session's steps as an SVG of bars as wide as their seconds and as
+  tall as their zone, with repeats written out.
+- A web app manifest starts the installed app at `/today` in its own window,
+  with PNG icons for Android and iOS home screens.
 
 ## Environments
 
