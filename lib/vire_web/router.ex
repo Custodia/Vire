@@ -64,6 +64,12 @@ defmodule VireWeb.Router do
     get "/seasons", SeasonController, :index
     get "/seasons/:id", SeasonController, :show
     get "/plan_changes", PlanChangeController, :index
+    get "/days", DayController, :index
+    get "/days/:date", DayController, :show
+    get "/sessions/:id", TrainingSessionController, :show
+    put "/sessions/:id/activity", TrainingSessionController, :match
+    get "/activities/:id", ActivityController, :show
+    get "/activities/:id/streams", ActivityController, :streams
     post "/uploads", UploadController, :create
     get "/uploads/:id", UploadController, :show
   end

@@ -99,3 +99,21 @@ export const getSeasons = () => api("/seasons");
 export const getSeason = (id) => api(`/seasons/${encodeURIComponent(id)}`);
 
 export const getPlanChanges = () => api("/plan_changes");
+
+export const getDays = (from, to) => api(`/days?from=${from}&to=${to}`);
+
+export const getSession = (id) => api(`/sessions/${encodeURIComponent(id)}`);
+
+export const matchSession = (sessionId, activityId) =>
+  api(`/sessions/${encodeURIComponent(sessionId)}/activity`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ activity_id: activityId }),
+  });
+
+export const getActivity = (id) => api(`/activities/${encodeURIComponent(id)}`);
+
+export const getActivityStreams = (id, channels, step) =>
+  api(
+    `/activities/${encodeURIComponent(id)}/streams?${new URLSearchParams({ channels: channels.join(","), step })}`,
+  );

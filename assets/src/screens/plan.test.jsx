@@ -37,7 +37,7 @@ describe("the plan", () => {
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
     expect(within(nav).getByRole("link", { name: "Plan" })).toHaveAttribute("aria-current", "page");
-    expect(within(nav).getByRole("link", { name: "Today" })).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Calendar" })).not.toHaveAttribute("aria-current");
   });
 
   test("lays the phases and blocks along the season, with the spans nothing covers", async () => {
@@ -66,21 +66,23 @@ describe("the plan", () => {
     renderApp("/plan");
 
     const weeks = await screen.findByRole("list", { name: "Hours per week" });
-    expect(
-      within(weeks).getByRole("group", { name: "Week of 26 Oct" }),
-    ).toHaveAccessibleDescription(
+    const past = within(weeks).getByRole("link", { name: "Week of 26 Oct" });
+    expect(past).toHaveAttribute("href", "/calendar/week/2026-10-26");
+    expect(past).toHaveAccessibleDescription(
       "Week of 26 Oct 0.8 of 1.8 h · 1 of 2 sessions. Not done: Technique swim 1h Not in the plan: Other +45′",
     );
-    // The swim skipped today is missed; the rest of the week is still to come.
-    expect(within(weeks).getByRole("group", { name: "Week of 2 Nov" })).toHaveAccessibleDescription(
-      "Week of 2 Nov 0.0 of 3.3 h · 0 of 3 sessions. Not done: Technique swim 45′",
+    // The strength session skipped today is missed; the rest of the week is still to come.
+    const now = within(weeks).getByRole("link", { name: "Week of 2 Nov" });
+    expect(now).toHaveAttribute("href", "/calendar/week/2026-11-03");
+    expect(now).toHaveAccessibleDescription(
+      "Week of 2 Nov 2.1 of 5.1 h · 2 of 5 sessions. Not done: Strength 40′",
     );
-    expect(within(weeks).getByRole("group", { name: "Week of 9 Nov" })).toHaveAccessibleDescription(
+    expect(within(weeks).getByRole("link", { name: "Week of 9 Nov" })).toHaveAccessibleDescription(
       "Week of 9 Nov Not planned yet.",
     );
-    expect(
-      within(weeks).getByRole("group", { name: "Week of 16 Nov" }),
-    ).toHaveAccessibleDescription("Week of 16 Nov 0.0 h planned · 0 sessions.");
+    expect(within(weeks).getByRole("link", { name: "Week of 16 Nov" })).toHaveAccessibleDescription(
+      "Week of 16 Nov 0.0 h planned · 0 sessions.",
+    );
   });
 
   test("tabulates the current phase's blocks with their dates, cycles and hours", async () => {
@@ -99,7 +101,7 @@ describe("the plan", () => {
     expect(row).toHaveTextContent("2 × 7d");
     expect(row).toHaveTextContent("Aerobic endurance");
     // 45′ + 1h + 1h + 45′ + 1h30.
-    expect(row).toHaveTextContent("5.0");
+    expect(row).toHaveTextContent("6.9");
   });
 
   test("opens on the block today falls in, as weeks of its days", async () => {
@@ -112,20 +114,20 @@ describe("the plan", () => {
     expect(within(first).getByRole("rowheader")).toHaveTextContent("Load 1");
     expect(within(second).getByRole("rowheader")).toHaveTextContent("Load 2");
 
-    const today = within(second).getByRole("group", { name: "Tue 3 Nov" });
+    const today = within(second).getByRole("link", { name: "Tue 3 Nov" });
     expect(today).toHaveTextContent("Today");
-    expect(today).toHaveTextContent("Threshold intervals 1h");
-    expect(today).toHaveTextContent("Skipped: Technique swim 45′");
-    expect(within(second).getByRole("group", { name: "Wed 4 Nov" })).toHaveTextContent("Rest");
+    expect(today).toHaveTextContent("Done: Swim — endurance 1h08");
+    expect(today).toHaveTextContent("Run / walk — Z2 35′");
+    expect(within(second).getByRole("link", { name: "Wed 4 Nov" })).toHaveTextContent("Rest");
   });
 
   test("marks sessions that are done and skipped", async () => {
     renderApp("/plan");
 
-    expect(await screen.findByRole("group", { name: "Mon 26 Oct" })).toHaveTextContent(
+    expect(await screen.findByRole("link", { name: "Mon 26 Oct" })).toHaveTextContent(
       "Done: Easy run 45′",
     );
-    expect(screen.getByRole("group", { name: "Wed 28 Oct" })).toHaveTextContent(
+    expect(screen.getByRole("link", { name: "Wed 28 Oct" })).toHaveTextContent(
       "Skipped: Technique swim 1h",
     );
   });
@@ -134,8 +136,9 @@ describe("the plan", () => {
     vi.setSystemTime(new Date(2026, 10, 4, 9, 30));
     renderApp("/plan");
 
-    const tuesday = await screen.findByRole("group", { name: "Tue 3 Nov" });
-    expect(tuesday).toHaveTextContent("Skipped: Threshold intervals 1h");
+    const tuesday = await screen.findByRole("link", { name: "Tue 3 Nov" });
+    expect(tuesday).toHaveTextContent("Skipped: Run / walk — Z2 35′");
+    expect(tuesday).toHaveTextContent("Done: Swim — endurance 1h08");
   });
 
   test("splits a cycle longer than a week over rows, sharing a week with the next", async () => {
@@ -154,7 +157,7 @@ describe("the plan", () => {
     const [, first, second] = within(calendar).getAllByRole("row");
     expect(within(first).getByRole("rowheader")).toHaveTextContent("Load 1");
     expect(within(second).getByRole("rowheader")).toHaveTextContent("Load 1Recovery");
-    expect(within(second).getByRole("group", { name: "Thu 26 Nov" })).toHaveTextContent("Recovery");
+    expect(within(second).getByRole("link", { name: "Thu 26 Nov" })).toHaveTextContent("Recovery");
   });
 
   test("choosing a block on the map redraws the table and calendar", async () => {
@@ -210,6 +213,13 @@ describe("the plan", () => {
     expect(screen.getByText("1 Mar – 30 May")).toBeVisible();
   });
 
+  test("a day leads to its day in the calendar", async () => {
+    const { router } = renderApp("/plan");
+
+    await userEvent.click(await screen.findByRole("link", { name: "Thu 5 Nov" }));
+    expect(router.state.location.pathname).toBe("/calendar/day/2026-11-05");
+  });
+
   test("lists the latest plan changes with the reasons behind them", async () => {
     renderApp("/plan");
 
@@ -236,8 +246,8 @@ describe("the plan", () => {
     expect(within(card("Season targets")).getByText("No targets yet.")).toBeVisible();
   });
 
-  test("Today links to the plan", async () => {
-    const { router } = renderApp("/today");
+  test("the calendar links to the plan", async () => {
+    const { router } = renderApp("/calendar");
 
     await userEvent.click(await screen.findByRole("link", { name: "Plan" }));
 
@@ -268,36 +278,24 @@ describe("the plan on a phone", () => {
     expect(within(map).getByRole("list", { name: "Hours per week" })).toBeVisible();
   });
 
-  test("opens the current block to its cycles, each a row of day rings", async () => {
+  test("opens the current block to its cycles, each a row of day rings leading to its week", async () => {
     renderApp("/plan");
 
     expect(await screen.findByRole("heading", { level: 2, name: "Base · blocks" })).toBeVisible();
     const block = screen.getByRole("button", { name: /^Block 1 · now/ });
     expect(block).toHaveAttribute("aria-expanded", "true");
-    const now = screen.getByRole("group", { name: "Load 2, 2 – 8 Nov, 3.3 h" });
+    const now = screen.getByRole("link", { name: "Load 2, 2 – 8 Nov, 5.1 h" });
+    expect(now).toHaveAttribute("href", "/calendar/week/2026-11-03");
     expect(within(now).getAllByRole("img")).toHaveLength(7);
-    expect(
-      within(now)
-        .getAllByRole("img")
-        .map((ring) => ring.getAttribute("aria-label")),
-    ).toEqual([
-      "Rest day kept",
-      "0 of 2 done",
-      "Rest day",
-      "0 of 1 done",
-      "Rest day",
-      "Rest day",
-      "Rest day",
-    ]);
-    expect(
-      within(screen.getByRole("group", { name: /^Load 1, 26 Oct – 1 Nov/ })).getAllByRole("img", {
-        name: "Rest day kept",
-      }),
-    ).toHaveLength(5);
+    expect(within(now).getByRole("img", { name: "1 of 4 done" })).toBeVisible();
+    expect(screen.getByRole("link", { name: /^Load 1, 26 Oct – 1 Nov/ })).toHaveAttribute(
+      "href",
+      "/calendar/week/2026-10-26",
+    );
 
     await userEvent.click(block);
     expect(block).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByRole("group", { name: /^Load 2/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Load 2/ })).toBeNull();
   });
 
   test("shows another phase's blocks from the map", async () => {
@@ -310,8 +308,8 @@ describe("the plan on a phone", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Block 2 · Threshold, planned" }));
     expect(block).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByRole("group", { name: /^Load 1, 16 – 25 Nov/ })).toBeVisible();
-    expect(screen.getByRole("group", { name: /^Recovery, 26 – 29 Nov/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /^Load 1, 16 – 25 Nov/ })).toBeVisible();
+    expect(screen.getByRole("link", { name: /^Recovery, 26 – 29 Nov/ })).toBeVisible();
   });
 
   test("keeps the targets and the coach log under the blocks", async () => {

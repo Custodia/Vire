@@ -1,4 +1,6 @@
+import { Link } from "@tanstack/react-router";
 import { formatDay, formatHours } from "../lib/format.js";
+import { dayLink } from "../lib/links.js";
 import {
   blockNumbers,
   calendarWeeks,
@@ -99,10 +101,10 @@ function DayCell({ cell, name, today }) {
         : "bg-calendar-planned";
 
   return (
-    <div
-      role="group"
+    <Link
+      {...dayLink(day.date)}
       aria-label={formatDay(day.date)}
-      className={`flex h-full min-h-14.5 min-w-0 flex-col gap-1 rounded-chip p-1.5 ${tone} ${
+      className={`focus-ring flex h-full min-h-14.5 min-w-0 flex-col gap-1 rounded-chip p-1.5 no-underline hover:brightness-125 ${tone} ${
         name ? "border-l-2 border-rule" : ""
       }`}
     >
@@ -119,7 +121,7 @@ function DayCell({ cell, name, today }) {
               session={{ ...session, status: shownStatus(session, day.date, today) }}
             />
           ))}
-    </div>
+    </Link>
   );
 }
 

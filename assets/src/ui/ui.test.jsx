@@ -5,10 +5,10 @@ import { sessions } from "../mocks/handlers.js";
 import { Button } from "./Button.jsx";
 import { CoachNote } from "./CoachNote.jsx";
 import { DisciplineIcon } from "./DisciplineIcon.jsx";
+import { Screen } from "./Screen.jsx";
 import { Frame } from "./Frame.jsx";
 import { PageHeader } from "./PageHeader.jsx";
-import { Screen } from "./Screen.jsx";
-import { SessionCard } from "./SessionCard.jsx";
+import { SessionChip } from "./SessionChip.jsx";
 import { SessionRow } from "./SessionRow.jsx";
 import { Stat } from "./Stat.jsx";
 import { StatusChip } from "./StatusChip.jsx";
@@ -87,56 +87,23 @@ describe("WorkoutProfile", () => {
   });
 });
 
-describe("SessionCard", () => {
-  test("shows the discipline, place, title, note, stats and profile of a session", () => {
+describe("SessionChip", () => {
+  test("marks a done or skipped session and colours an upcoming one by its sport", () => {
     render(
-      <SessionCard
-        session={sessions.run}
-        lead="Next"
-        place="3 of 4"
-        linkProps={{ href: `/sessions/${sessions.run.id}` }}
-      />,
+      <>
+        <SessionChip session={sessions.swim} />
+        <SessionChip session={sessions.strength} />
+        <SessionChip session={sessions.bike} />
+      </>,
     );
 
-    const card = screen.getByRole("article", { name: "Run / walk — Z2" });
-    expect(within(card).getByRole("img", { name: "Run" })).toBeInTheDocument();
-    expect(card).toHaveTextContent("Next");
-    expect(card).toHaveTextContent("3 of 4");
-    expect(card).toHaveTextContent("Easy aerobic, joints first.");
-    expect(card).toHaveTextContent("35′Duration");
-    expect(card).toHaveTextContent("28′Work");
-    expect(card).toHaveTextContent("Z2Peak zone");
-    expect(
-      within(card).getByRole("img", { name: /^Workout profile: 7 × \(4′ work/ }),
-    ).toBeVisible();
-    expect(within(card).getByRole("link", { name: "Run / walk — Z2" })).toHaveAttribute(
-      "href",
-      `/sessions/${sessions.run.id}`,
+    expect(screen.getByText("Done:").parentElement).toHaveTextContent(
+      "✓ Done: Swim — endurance 1h08",
     );
-  });
-
-  test("shows only the duration for a session without steps", () => {
-    render(<SessionCard session={{ ...sessions.strength, planned_seconds: null }} lead="Then" />);
-
-    const card = screen.getByRole("article", { name: "Strength" });
-    expect(card).toHaveTextContent("—Duration");
-    expect(card).not.toHaveTextContent("Work");
-    expect(within(card).queryByRole("img", { name: /Workout profile/ })).toBeNull();
-  });
-
-  test("writes long durations in hours", () => {
-    render(<SessionCard session={sessions.bike} lead="Then" />);
-
-    const card = screen.getByRole("article", { name: "Bike — threshold 3 × 12′" });
-    expect(card).toHaveTextContent("1h45Duration");
-    expect(card).toHaveTextContent("1h06Work");
-    expect(card).toHaveTextContent("Z4Peak zone");
-  });
-
-  test("writes whole hours without minutes", () => {
-    render(<SessionCard session={{ ...sessions.strength, planned_seconds: 7200 }} lead="Then" />);
-
-    expect(screen.getByRole("article")).toHaveTextContent("2hDuration");
+    expect(screen.getByText("Skipped:").parentElement).toHaveTextContent("Skipped: Strength 40′");
+    expect(screen.getByText("Bike — threshold 3 × 12′ 1h45")).toHaveClass(
+      "text-discipline-bike-soft",
+    );
   });
 });
 
@@ -162,7 +129,16 @@ describe("SessionRow", () => {
   test("leaves out the detail and the state when there are none", () => {
     render(<SessionRow discipline="other" title="Walk" linkProps={{ href: "/activities/1" }} />);
 
-    expect(screen.getByRole("link", { name: /^Other\s*Walk$/ })).toBeInTheDocument();
+    const row = screen.getByRole("link", { name: /^Other\s*Walk$/ });
+    expect(row).not.toHaveAttribute("aria-current");
+  });
+
+  test("marks the row that is shown", () => {
+    render(
+      <SessionRow discipline="run" title="Run" selected linkProps={{ href: "/sessions/1" }} />,
+    );
+
+    expect(screen.getByRole("link", { name: /Run/ })).toHaveAttribute("aria-current", "true");
   });
 });
 
@@ -170,7 +146,7 @@ describe("CoachNote", () => {
   test("shows the rationale under its label", () => {
     render(<CoachNote>{sessions.bike.rationale}</CoachNote>);
 
-    expect(screen.getByRole("heading", { name: "Why this session" })).toBeInTheDocument();
+    expect(screen.getByText("Why this session")).toBeInTheDocument();
     expect(screen.getByText(/Each load cycle adds two minutes/)).toBeInTheDocument();
   });
 });

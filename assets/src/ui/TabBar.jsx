@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router";
 import { Button as AriaButton } from "react-aria-components";
 
+/** Places a bar fixed to the bottom of the screen just above the tab bar. */
+export const aboveTabs = "bottom-[calc(3.5rem+1px+max(0.5rem,env(safe-area-inset-bottom)))]";
+
 const tab =
   "focus-ring flex min-h-12.5 flex-col items-center justify-center gap-1 rounded-tile text-[11px] font-semibold no-underline";
 

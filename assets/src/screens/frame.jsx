@@ -9,9 +9,9 @@ import { SignOutButton } from "./sign-out.jsx";
 
 const screens = [
   {
-    to: "/today",
-    label: "Today",
-    paths: ["/today"],
+    to: "/calendar",
+    label: "Calendar",
+    paths: ["/calendar", "/sessions", "/activities"],
     icon: (
       <>
         <rect x="3.5" y="5" width="17" height="15.5" rx="3" />

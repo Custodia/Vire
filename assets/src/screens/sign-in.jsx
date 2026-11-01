@@ -18,9 +18,10 @@ export function SignInScreen() {
 
   const mutation = useMutation({
     mutationFn: signIn,
+    meta: { authenticates: true },
     onSuccess: (user) => {
       queryClient.setQueryData(meQuery.queryKey, user);
-      navigate({ href: redirect ?? "/today", replace: true });
+      navigate({ href: redirect ?? "/calendar", replace: true });
     },
   });
 

@@ -40,6 +40,18 @@ export function SessionChip({ session }) {
   );
 }
 
+/** An activity no session is matched to, in a calendar day. */
+export function ExtraChip({ activity }) {
+  const { activity: name } = disciplineOf(activity.discipline);
+  return (
+    <span title={name} className={`${base} border-border-strong bg-surface-raised text-ink-soft`}>
+      <span aria-hidden="true">+ </span>
+      <span className="sr-only">Not in the plan: </span>
+      {name}
+    </span>
+  );
+}
+
 /** A rest day in a calendar, ticked once it is `kept`. */
 export function RestChip({ kept = false }) {
   return kept ? (

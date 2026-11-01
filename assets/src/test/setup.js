@@ -23,6 +23,7 @@ window.matchMedia = (query) => ({
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   viewport.desktop = true;
+  localStorage.clear();
   server.resetHandlers();
   resetMocks();
   forgetCsrfToken();

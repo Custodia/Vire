@@ -15,34 +15,36 @@ async function signInWith(email, secret) {
 describe("signing in", () => {
   test("sends a signed-out visitor to sign in and back to where they were going", async () => {
     mockSession.signedIn = false;
-    const { router } = renderApp("/today");
+    const { router } = renderApp("/calendar/week/2026-11-03");
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(router.state.location.pathname).toBe("/sign-in");
-    expect(router.state.location.search).toEqual({ redirect: "/today" });
+    expect(router.state.location.search).toEqual({ redirect: "/calendar/week/2026-11-03" });
 
     await signInWith("Ada@Example.com", password);
 
-    await waitFor(() => expect(router.state.location.pathname).toBe("/today"));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/calendar/week/2026-11-03"));
     expect(await screen.findByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 
   test("keeps the query string of the page the visitor was going to", async () => {
     mockSession.signedIn = false;
-    const { router } = renderApp("/today?tab=sessions");
+    const { router } = renderApp("/plan?season=autumn");
 
     await signInWith(user.email, password);
 
-    await waitFor(() => expect(router.state.location.href).toBe("/today?tab=sessions"));
+    await waitFor(() => expect(router.state.location.href).toBe("/plan?season=autumn"));
   });
 
-  test("goes to Today after signing in without a page to return to", async () => {
+  test("goes to today's day after signing in without a page to return to", async () => {
     mockSession.signedIn = false;
     const { router } = renderApp("/sign-in?redirect=//example.com");
 
     await signInWith(user.email, password);
 
-    await waitFor(() => expect(router.state.location.pathname).toBe("/today"));
+    await waitFor(() =>
+      expect(router.state.location.pathname).toMatch(/^\/calendar\/day\/\d{4}-\d{2}-\d{2}$/),
+    );
   });
 
   test("says so when the email and password do not match", async () => {
@@ -70,14 +72,14 @@ describe("signing in", () => {
 
 describe("signing out", () => {
   test("ends the session and returns to sign in", async () => {
-    const { router } = renderApp("/today");
+    const { router } = renderApp("/calendar");
 
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(mockSession.signedIn).toBe(false);
 
-    await router.navigate({ to: "/today" });
+    await router.navigate({ to: "/plan" });
 
     await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
   });
@@ -91,7 +93,7 @@ describe("checking the session", () => {
         failing ? HttpResponse.json({}, { status: 500 }) : HttpResponse.json(user),
       ),
     );
-    renderApp("/today");
+    renderApp("/calendar");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Vire could not load this page.");
 
@@ -106,11 +108,11 @@ describe("checking the session", () => {
     server.events.on("request:start", ({ request }) => {
       if (new URL(request.url).pathname === "/api/me") calls++;
     });
-    const { router } = renderApp("/today");
+    const { router } = renderApp("/calendar");
     await screen.findByRole("button", { name: "Sign out" });
 
     await router.navigate({ to: "/" });
-    await waitFor(() => expect(router.state.location.pathname).toBe("/today"));
+    await waitFor(() => expect(router.state.location.pathname).toMatch(/^\/calendar\/day\//));
 
     expect(calls).toBe(1);
     server.events.removeAllListeners();

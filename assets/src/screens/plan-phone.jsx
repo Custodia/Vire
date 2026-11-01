@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { dayOf } from "../lib/calendar.js";
 import { formatDates, formatHours } from "../lib/format.js";
+import { calendarLink } from "../lib/links.js";
 import {
   around,
   blockNumbers,
@@ -267,10 +269,10 @@ function CycleRow({ cycle, name, today }) {
   const hours = `${formatHours(plannedSecondsOfDays(cycle.days))} h`;
 
   return (
-    <div
+    <Link
+      {...calendarLink("week", now ? today : cycle.period.first)}
       aria-label={`${name}, ${dates}, ${hours}`}
-      role="group"
-      className={`flex min-h-12 items-center gap-2.5 rounded-tile px-1.5 py-2 ${
+      className={`focus-ring flex min-h-12 items-center gap-2.5 rounded-tile px-1.5 py-2 text-ink no-underline ${
         now ? "bg-accent-tint" : ""
       }`}
     >
@@ -290,7 +292,21 @@ function CycleRow({ cycle, name, today }) {
           </span>
         ))}
       </span>
-    </div>
+      <svg
+        aria-hidden="true"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="flex-none text-ink-muted"
+      >
+        <path d="M9 6l6 6-6 6" />
+      </svg>
+    </Link>
   );
 }
 

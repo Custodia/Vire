@@ -1,7 +1,7 @@
 {
   "name": "Vire",
   "short_name": "Vire",
-  "start_url": "/today",
+  "start_url": "/calendar",
   "scope": "/",
   "display": "standalone",
   "background_color": "#0d1012",

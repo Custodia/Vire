@@ -40,8 +40,10 @@
   --color-calendar-past: #0f1214;
   --color-calendar-planned: #1e2328;
   --color-calendar-recovery: #18222c;
+  --color-calendar-month: #14181b;
   --color-calendar-today: #141a12;
   --color-calendar-today-edge: #2f4a22;
+  --color-segment-selected: #2a3138;
 
   --color-discipline-swim: #5db8f5;
   --color-discipline-swim-soft: #8ccbf7;
@@ -75,6 +77,10 @@
   --color-training-zone-4: #ffa43a;
   --color-training-zone-5: #ff5c7a;
 
+  --color-chart-power: var(--color-discipline-bike);
+  --color-chart-heart-rate: var(--color-training-zone-5);
+  --color-chart-pace: var(--color-discipline-swim);
+
   --color-state-done: #b7f36b;
   --color-state-done-tint: #13261a;
   --color-state-done-edge: #2f5a2a;
@@ -88,6 +94,7 @@
   --color-state-rest-tint: #111518;
   --color-state-rest-edge: #3a424a;
   --color-state-rest-kept: #7fa84b;
+  --color-state-extra: #c9cfd5;
 
   --font-*: initial;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;

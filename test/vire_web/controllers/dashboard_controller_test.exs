@@ -30,7 +30,7 @@ defmodule VireWeb.DashboardControllerTest do
     test "serves the web app manifest", %{conn: conn} do
       conn = get(conn, "/manifest.webmanifest")
 
-      assert %{"start_url" => "/today", "display" => "standalone", "icons" => icons} =
+      assert %{"start_url" => "/calendar", "display" => "standalone", "icons" => icons} =
                Jason.decode!(response(conn, 200))
 
       for %{"src" => src} <- icons do
