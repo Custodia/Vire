@@ -45,6 +45,22 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
   request without a signed-in user. `/api/health`, `/api/csrf` and
   `/api/session` are public.
+- **`GET /api/seasons`** answers the user's seasons, earliest first, each with
+  its id, name and period, behind the `:authenticated` pipeline.
+  **`GET /api/seasons/:id`** answers one season with its rationale and
+  everything beneath it: its phases with their rationale, each phase's blocks
+  with their focus,
+  each block's cycles with their kind, and each cycle's days with their kind,
+  note and sessions, a session as its discipline, title, planned seconds,
+  status and position. Every level carries its period. Beside the phases are
+  the activities on the season's dates that no session is matched to, each with
+  its id, discipline, local date, start, UTC offset, duration, distance and
+  training load. Another user's season, an unknown one, and an id that is not a
+  UUID all answer 404.
+- **`GET /api/plan_changes`** answers the user's eight latest plan changes,
+  newest first, behind the `:authenticated` pipeline. A change is its entity,
+  action, subject (the name, focus, cycle kind, date or session title of the
+  row it acted on), rationale, channel, MCP client name and time.
 - **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
   20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
   its parse job enqueued in one transaction; the answer is 201 with the file's
@@ -279,7 +295,8 @@ or a delete takes the reason for the change.
   JSON, the reason given or a new row's own rationale, and the scope's channel
   and MCP client. A delete's
   cascade, and the days a cycle gains or loses, fall under the change of the row
-  the caller acted on. Changes list newest first, by entity and id.
+  the caller acted on. Changes list newest first, by entity and id, or as the
+  latest few with the name of the MCP client behind each.
 - **Reads** are the list of seasons, the start and end of every row of a
   level, the plan from season to sessions for one season, for the seasons
   overlapping a period or for every season, and one day with its sessions and
@@ -438,6 +455,32 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   area, over tabs for the screens and More. More opens a sheet with the user
   and Sign out. A sheet rises from the bottom edge on a phone and closes when
   dragged down by its handle; on a desktop it is a card in the middle.
+- **The plan** (`/plan`) reads `GET /api/seasons` and then the chosen season,
+  which is the one holding the browser's date unless `season` in the query
+  names another; with more than one season, buttons above the header switch.
+  The season leads as the goal, with its rationale and the weeks left to its
+  end, beside empty trend weight and chronic load stats. A season map lays the
+  phases, the blocks, the hours each week and an empty weight row along the
+  season's dates, marking what is done, current and planned, the spans no
+  phase or block covers, and today. Each week's bar outlines its planned hours
+  and fills them with its done sessions, its activities outside the plan and
+  the sessions still to come, leaving the hours of skipped sessions empty, and
+  hovering a week lists them. Choosing a phase or block on
+  the map selects it, opening on the block holding today. A table lists the
+  selected phase's blocks with their dates, cycles drawn to length with their
+  pattern, focus and planned hours. The selected block's days form a calendar
+  of weeks from Monday, each row naming the cycles in it, a cycle longer than
+  a week continuing on the next row and a cycle starting mid-week named on its
+  first day. A day shows its sessions in their discipline's colours, or marked
+  done or skipped, a session still planned on a day before the browser's date
+  showing as skipped, and a past rest day ticked. Beside them, an empty season
+  targets card and a coach log of `GET /api/plan_changes`. On a phone the map
+  is a strip that scrolls through the season from today, and the chosen
+  phase's blocks are cards, the one holding today open, each opening to its
+  cycles as rows of day rings: one ring a day split evenly between its
+  sessions, each arc thick when done and thin otherwise, circled in the accent
+  on today, and a dashed ring for a day without sessions, green once it is
+  past. A user without a season is told the plan starts with one.
 - Tailwind v4 takes its colours, fonts, radii, spacing step, board width and
   the text sizes the boards add to Tailwind's scale from `src/styles/tokens.css`
   ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
@@ -445,12 +488,13 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
   container widths come from Tailwind's defaults. Inter and Barlow Condensed
   are bundled from fontsource packages.
 - `src/ui/` holds the components screens are built from, one per file: `Stat`,
-  `StatusChip`, `DisciplineIcon`, `TrainingZoneBadge`, `WorkoutProfile`,
-  `SessionCard`, `SessionRow`, `CoachNote`, `Button`, `TextField`, `Card`,
-  `PageHeader`, `TopBar`, `TabBar`, `Sheet`, the signed-in `Frame` and
-  `PhoneFrame` and the signed-out `Screen`, a narrow column. `WorkoutProfile`
-  draws a session's steps as an SVG of bars as wide as their seconds and as
-  tall as their zone, with repeats written out.
+  `StatusChip`, `SessionChip`, `DisciplineIcon`, `TrainingZoneBadge`,
+  `WorkoutProfile`, `SessionCard`, `SessionRow`, `CoachNote`, `Empty`,
+  `Button`, `TextField`, `Card`, `PageHeader`, `TopBar`, `TabBar`, `Sheet`,
+  the day ring, the signed-in `Frame` and `PhoneFrame` and the signed-out
+  `Screen`, a narrow column. `WorkoutProfile` draws a session's steps as an
+  SVG of bars as wide as their seconds and as tall as their zone, with
+  repeats written out.
 - A web app manifest starts the installed app at `/today` in its own window,
   with PNG icons for Android and iOS home screens.
 

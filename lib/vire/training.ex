@@ -311,6 +311,14 @@ defmodule Vire.Training do
 
   defp dates(first, last), do: "#{first} to #{last}"
 
+  @doc """
+  The scope's activities on the local `date`, or on the local dates a period
+  holds, that no session is matched to, earliest first.
+  """
+  def list_unmatched_activities(%Scope{} = scope, dates) do
+    scope |> unmatched_activities(dates) |> Repo.all()
+  end
+
   ## Seasons, phases, blocks and cycles
 
   @doc """
@@ -549,6 +557,21 @@ defmodule Vire.Training do
       |> order_by(desc: :inserted_at)
       |> Repo.all()
     end
+  end
+
+  @doc """
+  The scope's latest `limit` plan changes, newest first, each paired with the
+  name of the MCP client that made it, or `nil`.
+  """
+  def list_recent_changes(%Scope{} = scope, limit) do
+    from(c in for_user(PlanChange, scope),
+      left_join: client in Vire.Mcp.Client,
+      on: client.id == c.mcp_client_id,
+      order_by: [desc: c.inserted_at, desc: c.id],
+      limit: ^limit,
+      select: {c, client.name}
+    )
+    |> Repo.all()
   end
 
   ## Helpers
@@ -830,6 +853,9 @@ defmodule Vire.Training do
   defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
 
   defp on_local_dates(query, %Date{} = date), do: where(query, [a], a.local_date == ^date)
+
+  defp on_local_dates(query, %Period{first: first, last: last}),
+    do: where(query, [a], a.local_date >= ^first and a.local_date <= ^last)
 
   defp on_local_dates(query, dates) when is_list(dates),
     do: where(query, [a], a.local_date in ^dates)

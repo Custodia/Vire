@@ -19,6 +19,12 @@ const screens = [
       </>
     ),
   },
+  {
+    to: "/plan",
+    label: "Plan",
+    paths: ["/plan"],
+    icon: <path d="M4 6h9M4 12h16M4 18h11" strokeWidth="2.4" />,
+  },
 ];
 
 /**

@@ -25,6 +25,24 @@
   --color-accent-tint: #1a2016;
   --color-caution: #ffb27a;
 
+  --color-phase: #2b3a1e;
+  --color-phase-ink: #dcebc7;
+
+  --color-progress-done: #7fa84b;
+  --color-progress-done-deep: #4e6631;
+  --color-progress-current: var(--color-accent);
+  --color-progress-current-planned: #34422a;
+  --color-progress-planned: #4a535c;
+  --color-progress-recovery: #2d4a63;
+  --color-progress-missed: #8c969f;
+  --color-progress-extra: #a7d46a;
+
+  --color-calendar-past: #0f1214;
+  --color-calendar-planned: #1e2328;
+  --color-calendar-recovery: #18222c;
+  --color-calendar-today: #141a12;
+  --color-calendar-today-edge: #2f4a22;
+
   --color-discipline-swim: #5db8f5;
   --color-discipline-swim-soft: #8ccbf7;
   --color-discipline-swim-tile: #15293a;
@@ -69,6 +87,7 @@
   --color-state-rest: #a0a9b1;
   --color-state-rest-tint: #111518;
   --color-state-rest-edge: #3a424a;
+  --color-state-rest-kept: #7fa84b;
 
   --font-*: initial;
   --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
