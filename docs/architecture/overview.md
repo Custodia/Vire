@@ -666,7 +666,7 @@ A React single-page app under `assets/`, built by Vite into `priv/static`
 | --- | --- | --- | --- | --- | --- | --- |
 | dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` and `/socket` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
 | test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder | `Req.Test` stubs; the base URL is 127.0.0.1:9, where nothing listens |
-| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running, without the cron | Fixed in `config/test.exs` | The FIT decoder | 127.0.0.1:9, where nothing listens |
+| test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002 with `PHX_SERVER=true`, serving the built dashboard | `vire_e2e`, unsandboxed | Running, without the cron; the `garmin` queue starts paused | Fixed in `config/test.exs` | The FIT decoder | 127.0.0.1:9, where nothing listens |
 | prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running, with the cron | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it | `personal.connectapi.garmin.com` |
 
 ## Tests
@@ -684,5 +684,18 @@ the access token that flow ends in. Elixir
 tests tagged `dashboard_build` need the built dashboard and are skipped without
 it.
 Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix
-against the real database. CI runs ExUnit, Vitest and Playwright as separate
-jobs; the ExUnit and Vitest coverage thresholds fail the job when missed.
+in the test configuration, against the real database and the real decoder.
+`mix vire.seed_e2e` gives one user an invented plan with sessions on the
+fixtures' dates and today, and the specs sign in as that user through the form
+and upload the fixtures through the upload dialog. They cover sign-in and
+sign-out, the calendar with its charts, the plan, uploads followed over
+the live channel, Sync now, and an MCP client's OAuth flow from registration to
+tool calls. Nothing answers for Garmin there, so a queued sync waits for good:
+the Sync now spec checks the sync under way in its tab and in another, then
+seeds again to drop it. The specs run on a desktop viewport, and those named
+`*.phone.spec.js` on a phone's with touch, one test at a time, because all of
+them share the user and the database. The database is kept between local runs,
+so a spec passes whether its activities exist already or it has just uploaded
+them. CI runs ExUnit, Vitest and Playwright as separate jobs; the ExUnit and
+Vitest coverage thresholds fail the job when
+missed.
