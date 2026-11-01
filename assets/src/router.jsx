@@ -9,6 +9,7 @@ import { ApiError } from "./api/client.js";
 import { meQuery } from "./api/queries.js";
 import { ErrorScreen } from "./screens/error.jsx";
 import { AppFrame } from "./screens/frame.jsx";
+import { PlanScreen } from "./screens/plan.jsx";
 import { SignInScreen } from "./screens/sign-in.jsx";
 import { TodayScreen } from "./screens/today.jsx";
 
@@ -54,10 +55,19 @@ const todayRoute = createRoute({
   component: TodayScreen,
 });
 
+const planRoute = createRoute({
+  getParentRoute: () => authenticatedRoute,
+  path: "/plan",
+  validateSearch: (search) => ({
+    season: typeof search.season === "string" ? search.season : undefined,
+  }),
+  component: PlanScreen,
+});
+
 export const routeTree = rootRoute.addChildren([
   indexRoute,
   signInRoute,
-  authenticatedRoute.addChildren([todayRoute]),
+  authenticatedRoute.addChildren([todayRoute, planRoute]),
 ]);
 
 export function createAppRouter({ queryClient, ...options }) {
