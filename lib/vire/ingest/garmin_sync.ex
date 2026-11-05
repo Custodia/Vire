@@ -6,7 +6,8 @@ defmodule Vire.Ingest.GarminSync do
   Discovery stores every summary as an activity and queues a download for each
   activity that has no file yet, a few seconds apart, on the `garmin` queue
   that sends Garmin one request at a time. A download stores the `.fit` file,
-  attaches it to its activity and queues its parse.
+  attaches it to its activity and queues its parse. Both record their progress
+  on the sync's run.
   """
 
   require Logger
@@ -21,6 +22,7 @@ defmodule Vire.Ingest.GarminSync do
   alias Vire.Ingest.DownloadWorker
   alias Vire.Ingest.FitActivity
   alias Vire.Ingest.Garmin
+  alias Vire.Ingest.SyncRuns
   alias Vire.Repo
   alias Vire.Training
   alias Vire.Training.Period
@@ -61,24 +63,34 @@ defmodule Vire.Ingest.GarminSync do
 
   @doc """
   Searches Garmin for the dates `periods/3` gives and stores every summary
-  found. After every search succeeds, the sessions still planned within
-  those dates on a date before the day before `today`, the UTC date, are
-  marked skipped, and the connection records the sync.
+  found, adding the activities Vire did not hold and the downloads queued to
+  the run with `run_id`. After every search succeeds, the sessions still
+  planned within those dates on a date before the day before `today`, the UTC
+  date, are marked skipped, and the connection records the sync.
 
   A key the token endpoint refuses, or a run in which every search fails,
   pauses the connection and answers `{:cancel, reason}`. A run in which only
   some searches fail answers `{:error, reason}`, so the job is tried again.
   """
-  def run(%Scope{} = scope, %ProviderConnection{} = connection, range, %Date{} = today) do
+  def run(%Scope{} = scope, %ProviderConnection{} = connection, range, %Date{} = today, run_id) do
     periods = periods(scope, range, today)
     results = search(scope, connection, periods)
 
-    results
-    |> Enum.flat_map(fn
-      {:ok, activities} -> activities
-      {:error, _reason} -> []
-    end)
-    |> enqueue_downloads(scope)
+    found =
+      Enum.flat_map(results, fn
+        {:ok, found} -> found
+        {:error, _reason} -> []
+      end)
+
+    queued =
+      for(%{download?: true, activity: activity} <- found, do: activity)
+      |> enqueue_downloads(scope, run_id)
+
+    SyncRuns.found(
+      run_id,
+      for(%{new?: true, activity: activity} <- found, do: activity.id),
+      queued
+    )
 
     errors = Enum.filter(results, &match?({:error, _}, &1))
     refused = Enum.find_value(errors, &refused_status/1)
@@ -169,16 +181,19 @@ defmodule Vire.Ingest.GarminSync do
     for summary <- summaries,
         attrs = summary_attrs(summary),
         attrs != nil,
-        {:ok, activity} <- [store_summary(scope, attrs)],
-        is_nil(activity.source_file_id) and not manual?(summary),
-        do: activity
+        {outcome, activity} <- [store_summary(scope, attrs)],
+        do: %{
+          activity: activity,
+          new?: outcome == :inserted,
+          download?: is_nil(activity.source_file_id) and not manual?(summary)
+        }
   end
 
   defp store_summary(scope, attrs) do
     case Activities.upsert_provider_activity(scope, attrs) do
-      {:ok, activity} ->
+      {outcome, activity} when outcome in [:inserted, :updated] ->
         Ingest.activity_recorded(scope, activity)
-        {:ok, activity}
+        {outcome, activity}
 
       {:error, changeset} ->
         Logger.warning(
@@ -192,14 +207,18 @@ defmodule Vire.Ingest.GarminSync do
   defp manual?(summary),
     do: summary["manualActivity"] == true or summary["isManualActivity"] == true
 
-  defp enqueue_downloads(activities, scope) do
+  # A download kept from an earlier run counts towards that run only.
+  defp enqueue_downloads(activities, scope, run_id) do
     activities
     |> Enum.uniq_by(& &1.id)
     |> Enum.with_index()
-    |> Enum.each(fn {activity, index} ->
-      %{user_id: scope.user.id, activity_id: activity.id}
-      |> DownloadWorker.new(schedule_in: index * @download_spacing_seconds)
-      |> Oban.insert!()
+    |> Enum.count(fn {activity, index} ->
+      job =
+        %{user_id: scope.user.id, activity_id: activity.id, run_id: run_id}
+        |> DownloadWorker.new(schedule_in: index * @download_spacing_seconds)
+        |> Oban.insert!()
+
+      not job.conflict?
     end)
   end
 

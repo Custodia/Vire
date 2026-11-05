@@ -27,6 +27,8 @@ A record states what is settled. A question still open is named in
 | [0008](0008-fit-decoding.md) | FIT decoding | Accepted |
 | [0009](0009-garmin-sync.md) | Garmin sync | Accepted |
 | [0010](0010-mcp-access.md) | MCP access | Accepted |
+| [0011](0011-dashboard-design-system.md) | Dashboard design system | Accepted |
+| [0012](0012-live-updates.md) | Live updates | Accepted |
 
 ## Status
 

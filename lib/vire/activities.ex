@@ -49,6 +49,14 @@ defmodule Vire.Activities do
     end
   end
 
+  @doc "The scope's activities among `ids`, without their laps, lengths or streams."
+  def list_activities_by_id(%Scope{} = scope, ids) when is_list(ids) do
+    Activity
+    |> for_user(scope)
+    |> where([a], a.id in ^ids)
+    |> Repo.all()
+  end
+
   @doc "The scope's activity parsed from the source file with `source_file_id`, or `nil`."
   def get_activity_by_source_file(%Scope{} = scope, source_file_id) do
     case Ecto.UUID.cast(source_file_id) do
@@ -130,6 +138,9 @@ defmodule Vire.Activities do
   The summary updates the activity with its provider and external id. Without
   one it goes to the scope's activity from a file that has no provider and
   started within a minute of it, and otherwise makes a new activity.
+
+  Answers `{:inserted, activity}` for a new activity and `{:updated, activity}`
+  for one Vire already held.
   """
   def upsert_provider_activity(
         %Scope{user: %{id: user_id}} = scope,
@@ -143,10 +154,17 @@ defmodule Vire.Activities do
           scope |> started_near(started_at) |> where([a], is_nil(a.provider)) |> Repo.one() ||
           %Activity{user_id: user_id}
 
-      activity
-      |> Activity.provider_changeset(attrs)
-      |> Repo.insert_or_update()
+      outcome = if activity.id, do: :updated, else: :inserted
+
+      with {:ok, stored} <-
+             activity |> Activity.provider_changeset(attrs) |> Repo.insert_or_update() do
+        {:ok, {outcome, stored}}
+      end
     end)
+    |> case do
+      {:ok, stored} -> stored
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   @doc """

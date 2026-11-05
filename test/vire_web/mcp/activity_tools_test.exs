@@ -95,7 +95,7 @@ defmodule VireWeb.Mcp.ActivityToolsTest do
     assert %{"active" => true, "stroke" => "freestyle", "strokes" => strokes} = hd(lengths)
     assert is_integer(strokes)
 
-    {:ok, provider} =
+    {:inserted, provider} =
       Activities.upsert_provider_activity(ctx.scope, %{
         provider: :garmin,
         external_id: "4242",

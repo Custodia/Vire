@@ -63,13 +63,73 @@ defmodule Vire.Training do
   end
 
   @doc """
-  The day on `date`, with the cycle, block, phase and season above it as
-  `context` and its sessions in position order, or `nil`.
+  The day on `date`, with its cycle, the cycle, block, phase and season above
+  it as `context`, and its sessions in position order, or `nil`.
   """
   def get_day(%Scope{} = scope, %Date{} = date) do
     scope
     |> day_on(date)
-    |> Repo.preload([:context, sessions: sessions_query(scope)])
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
+  end
+
+  @doc """
+  The days a period holds, each loaded as `get_day/2` loads it, in date order.
+  A date outside every cycle has no day.
+  """
+  def list_days(%Scope{} = scope, %Period{} = period) do
+    Day
+    |> for_user(scope)
+    |> on_days(period)
+    |> order_by(:day)
+    |> Repo.all()
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
+  end
+
+  @doc """
+  The scope's session with `id`, with its date and its day, the day loaded as
+  `get_day/2` loads it without its sessions, or `nil`.
+  """
+  def get_session(%Scope{} = scope, id) do
+    case session_with_date(scope, id) do
+      nil -> nil
+      session -> Repo.preload(session, day: [:cycle, :context])
+    end
+  end
+
+  @doc """
+  The scope's latest session before `session`'s date that has its discipline
+  and title and is matched to an activity, with its date, or `nil`.
+  """
+  def get_previous_session(%Scope{} = scope, %Session{date: %Date{} = date} = session) do
+    scope
+    |> sessions_query()
+    |> exclude(:order_by)
+    |> where([s, d], s.discipline == ^session.discipline and not is_nil(s.activity_id))
+    |> where([s, d], d.day < ^date)
+    |> where([s], fragment("coalesce(?->>'title', '')", s.structure) == ^own_title(session))
+    |> order_by([s, d], desc: d.day, desc: s.position)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp own_title(%Session{structure: %{"title" => title}}) when is_binary(title), do: title
+  defp own_title(%Session{}), do: ""
+
+  @doc "The scope's sessions matched to the activities with `activity_ids`, by activity id."
+  def list_matched_sessions(%Scope{} = scope, activity_ids) when is_list(activity_ids) do
+    Session
+    |> for_user(scope)
+    |> where([s], s.activity_id in ^activity_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.activity_id, &1})
+  end
+
+  @doc """
+  The scope's activities on the local `date`, or on the local dates a period
+  holds, that no session is matched to, earliest first.
+  """
+  def list_unmatched_activities(%Scope{} = scope, dates) do
+    scope |> unmatched_activities(dates) |> Repo.all()
   end
 
   ## Seasons, phases, blocks and cycles
@@ -336,6 +396,21 @@ defmodule Vire.Training do
     end
   end
 
+  @doc """
+  The scope's latest `limit` plan changes, newest first, each paired with the
+  name of the MCP client that made it, or `nil`.
+  """
+  def list_recent_changes(%Scope{} = scope, limit) do
+    from(c in for_user(PlanChange, scope),
+      left_join: client in Vire.Mcp.Client,
+      on: client.id == c.mcp_client_id,
+      order_by: [desc: c.inserted_at, desc: c.id],
+      limit: ^limit,
+      select: {c, client.name}
+    )
+    |> Repo.all()
+  end
+
   ## Helpers
 
   defp pair(activities, sessions) when length(activities) == length(sessions) do
@@ -346,10 +421,11 @@ defmodule Vire.Training do
 
   defp pair(_activities, _sessions), do: []
 
-  defp unmatched_activities(scope, date) do
-    from a in for_user(Activity, scope),
+  defp unmatched_activities(scope, dates) do
+    activities = Activity |> for_user(scope) |> on_local_dates(dates)
+
+    from a in activities,
       as: :activity,
-      where: a.local_date == ^date,
       where: not exists(from s in Session, where: s.activity_id == parent_as(:activity).id),
       order_by: [a.started_at, a.id]
   end
@@ -395,7 +471,7 @@ defmodule Vire.Training do
   defp request_sync(_scope, nil), do: :ok
 
   defp request_sync(%Scope{} = scope, %Period{} = period) do
-    Ingest.enqueue_sync(scope, period)
+    Ingest.enqueue_sync(scope, period, :plan)
     :ok
   end
 
@@ -615,4 +691,9 @@ defmodule Vire.Training do
     do: where(query, [d], d.day >= ^first and d.day <= ^last)
 
   defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
+
+  defp on_local_dates(query, %Date{} = date), do: where(query, [a], a.local_date == ^date)
+
+  defp on_local_dates(query, %Period{first: first, last: last}),
+    do: where(query, [a], a.local_date >= ^first and a.local_date <= ^last)
 end

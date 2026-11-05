@@ -45,6 +45,16 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   sits behind the `:authenticated` pipeline, which answers a JSON 401 to a
   request without a signed-in user. `/api/health`, `/api/csrf` and
   `/api/session` are public.
+- **`/socket`** is the dashboard's WebSocket, websocket transport only
+  ([0012](adr/0012-live-updates.md)). It connects a request carrying the
+  session cookie and the session's CSRF token as `_csrf_token`, for a user who
+  exists, and takes the `live_socket_id` sign-in puts in the session as its
+  id; signing out broadcasts a disconnect to it. Its channel `user:<id>` joins
+  for that user only and pushes `sync`, the state `GET /api/sync` answers,
+  whenever a sync run changes, and `upload`, what `GET /api/uploads/:id`
+  answers, whenever a source file is processed or fails. Contexts publish
+  those changes through `Vire.Events`, on the user's PubSub topic, once they
+  are written.
 - **`POST /api/uploads`** takes a multipart upload in the field `file`, capped at
   20 MB. A file with a FIT header is stored as a `.fit` file from an upload and
   its parse job enqueued in one transaction; the answer is 201 with the file's
@@ -52,7 +62,66 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   and enqueues nothing. A missing file or one without a FIT header answers 422.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
-  sit behind the `:authenticated` pipeline.
+  sit behind the `:authenticated` pipeline. Any of the user's source files,
+  uploaded or fetched from Garmin, reads the same way.
+- **`GET /api/days/:date`** answers one date for the dashboard, behind the
+  `:authenticated` pipeline: `date`; `day`, with its kind, its note, the chain
+  of season, phase, block and cycle above it, the cycle with its kind, the
+  day's number within it and its length, and its sessions in position order,
+  each with its title (the structure's `title`, or the discipline's name),
+  structure, planned seconds, status, rationale and the summary of its matched
+  activity; and `activities`, the summaries of the date's activities no
+  session is matched to. An activity summary is its id, discipline, start, UTC
+  offset, duration, distance and training load. A date outside every cycle
+  answers `day: null`; a malformed date answers 400.
+  **`GET /api/days?from=&to=`** answers `days`, every date from `from` to `to`
+  in order, each as `GET /api/days/:date` answers it, from one query per kind
+  of row. A range longer than 42 days, reversed or missing an end answers 400.
+- **`GET /api/seasons`** answers the user's seasons, earliest first, each with
+  its id, name and period, behind the `:authenticated` pipeline.
+  **`GET /api/seasons/:id`** answers one season with its rationale and
+  everything beneath it: its phases with their rationale, each phase's blocks
+  with their focus,
+  each block's cycles with their kind, and each cycle's days with their kind,
+  note and sessions, a session as its discipline, title, planned seconds,
+  status and position. Every level carries its period. Beside the phases are
+  the activities on the season's dates that no session is matched to, each with
+  its id, discipline, local date, start, UTC offset, duration, distance and
+  training load. Another user's season, an unknown one, and an id that is not a
+  UUID all answer 404.
+- **`GET /api/plan_changes`** answers the user's eight latest plan changes,
+  newest first, behind the `:authenticated` pipeline. A change is its entity,
+  action, subject (the name, focus, cycle kind, date or session title of the
+  row it acted on), rationale, channel, MCP client name and time.
+- **`GET /api/sync`** answers the state of the user's Garmin sync, behind the
+  `:authenticated` pipeline: `connection`, `active`, `paused` or `none`;
+  `last_synced_at`; and `run`, the latest sync run or `null`. A run is its id,
+  trigger, state, error, the times it was queued, started and finished, its
+  file counts (`total`, `fetched`, `failed`) and the activities it found that
+  Vire did not hold, each a summary with its local date and the session it is
+  matched to, as its id and title, or `null`. **`POST /api/sync`** enqueues a
+  sync of the user's seasons and answers 202 with that state and the run it
+  queued or joined, or 409 with a `reason` of `not_connected` or `paused` when
+  the user has no unpaused Garmin connection.
+- **`GET /api/sessions/:id`** answers a session as a day lists it, with its
+  day (id, date, kind, note and chain), its matched activity in full, and
+  `last_time`: the latest session before its date with the same discipline
+  and title that has a matched activity, as its id, date and that activity's
+  summary with its average heart rate, or `null`.
+  **`PUT /api/sessions/:id/activity`** matches the session to the activity
+  with the JSON `activity_id`, which makes it done, or clears its match with
+  `null`, logging the change from the dashboard; it answers the session as
+  `GET` does. An activity on another date or matched to another session
+  answers 422.
+  **`GET /api/activities/:id`** answers an activity in full: its summary, local
+  date, pool length, average heart rate (its laps' heart rates weighted by
+  their time), laps, pool lengths and the session it is matched to, as its id,
+  title and planned seconds, or `null`.
+  **`GET /api/activities/:id/streams?channels=&step=`** answers the named
+  channels, or every recorded one, at `step` seconds per sample; a `step` that
+  is not a whole number from 1 answers 400. All four sit behind the
+  `:authenticated` pipeline and answer 404 for another user's session or
+  activity.
 - **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
   `:mcp` pipeline answers 403 to an `Origin` header naming another host than
   the endpoint's, and then checks the bearer token. Without one it answers 401
@@ -209,9 +278,14 @@ or a delete takes the reason for the change.
   above the day has a period, a rationale and its parent, and a child points at
   its parent together with its user, so it cannot reference another user's row.
   A day is one date with a kind, training or rest, and a note. A session has a
-  position within its day, a discipline, a structure of steps and targets as
-  JSON, planned seconds, a status and a rationale. Deleting a level deletes
-  everything beneath it.
+  position within its day, a discipline, a structure as JSON, planned seconds,
+  a status and a rationale. Deleting a level deletes everything beneath it.
+- **A session's structure** may hold `title` and `note` strings and a list of
+  `steps` ([0011](adr/0011-dashboard-design-system.md)). A step has a kind
+  (warmup, work, recovery, cooldown or rest), seconds, and optionally a zone
+  from 1 to 5, a target and a note; a repeat has a count and its own steps.
+  The changeset checks the steps and names the path of the first step at
+  fault; other keys are kept as given.
 - **Periods** are bounded `daterange` columns. The `Period` Ecto type reads and
   writes them as an inclusive first and last date and stores the half-open range
   Postgres keeps. Exclusion constraints stop a user's seasons, and the children
@@ -244,10 +318,13 @@ or a delete takes the reason for the change.
   the entity and its id, insert, update or delete, the row before and after as
   JSON, the rationale, and the scope's channel and MCP client. A delete's
   cascade, and the days a cycle gains or loses, fall under the change of the row
-  the caller acted on. Changes list newest first, by entity and id.
+  the caller acted on. Changes list newest first, by entity and id, or as the
+  latest few with the name of the MCP client behind each.
 - **Reads** are the list of seasons, the plan from season to sessions for one
-  season or for the seasons overlapping a period, and one day with its sessions
-  and the chain above it from the `training_day_contexts` view.
+  season or for the seasons overlapping a period, one day with its cycle, its
+  sessions and the chain above it from the `training_day_contexts` view, and
+  the activities on a local date that no session is matched to, earliest
+  first.
 
 ## Ingest
 
@@ -327,6 +404,17 @@ files and scheduled syncs for every user.
   enqueued only for a user with an unpaused Garmin connection: by the
   three-hourly cron for every such user, for the dates of a season created or
   the dates a season's new period gains, or on request.
+- **A sync run** records one sync from the moment it is queued
+  ([0012](adr/0012-live-updates.md)): its trigger, `manual`, `scheduled` or
+  `plan`; its state, `queued`, `running`, `finished` or `failed` with an
+  error; the activities its searches stored that Vire did not hold; and the
+  downloads it queued, fetched and gave up on. A run finishes once every search
+  has succeeded and every download it queued has been fetched or used up its
+  attempts. A cancelled sync, or one failing on its last attempt, fails the
+  run; a failure it retries keeps the run running with the error. A sync
+  request while one waits answers the waiting run, which a manual request
+  makes manual. A download already kept from an earlier run counts towards
+  that run only.
 - **A download** fetches one activity's file, stores it as a `.fit` file from
   Garmin's API, attaches it to the activity and enqueues its parse, in one
   transaction. A file the user already has is attached as it is; when an
@@ -364,10 +452,10 @@ scope first, and another user's activity reads as `nil` or is left out.
   second from the start, `null` where nothing was recorded, so a pause reads as
   `null`s.
 - **Reads** are the activities with a local date in a range, newest first and
-  optionally of one discipline; one activity with its laps and lengths; the
-  activity of a source file; and chosen streams at a number of seconds per
-  sample, each sample the mean of the window's recorded values, or the first
-  recorded value for position.
+  optionally of one discipline; the activities with given ids; one activity
+  with its laps and lengths; the activity of a source file; and chosen streams
+  at a number of seconds per sample, each sample the mean of the window's
+  recorded values, or the first recorded value for position.
 - **A planned session** points at its matched activity with its user, and
   loses the match when the activity is deleted.
 
@@ -376,20 +464,164 @@ scope first, and another user's activity reads as `nil` or is left out.
 A React single-page app under `assets/`, built by Vite into `priv/static`
 ([0004](adr/0004-dashboard.md)).
 
-- TanStack Router defines the routes in code. `/` redirects to `/today`.
+- TanStack Router defines the routes in code. `/` redirects to `/calendar`,
+  which redirects to the browser's date in the day view.
+  `/sign-in` is public; every other route sits behind a guard that asks
+  `GET /api/me` once, through a query cached for the life of the page, and
+  sends a 401 to `/sign-in` with the path it came from in `redirect`. Any
+  other request answering 401 means the session has ended: the dashboard goes
+  to `/sign-in` the same way and clears every cached query.
 - TanStack Query fetches through one API client, which sends cookies on the same
   origin and throws an error carrying the status and body of a failed response.
-- Tailwind v4 takes its colours, fonts, radii and spacing step from
-  `src/styles/tokens.css`, with Tailwind's default colours, fonts and radii
-  cleared. Text sizes, tracking, weights and container widths come from
-  Tailwind's defaults.
-- A web app manifest starts the installed app at `/today`.
+  A failed query is retried up to three times, and never after a 4xx answer.
+- **Sign-in** posts the email and password to `POST /api/session`, says so on a
+  401, and on success caches the user and goes to `redirect` when it names a
+  path on the same origin, or to `/calendar`. **Sign-out** posts
+  `DELETE /api/session`, clears every cached query and returns to `/sign-in`.
+  A route whose data fails to load shows an error with a retry.
+- **Unsafe requests** carry the session's CSRF token, which the dashboard fetches
+  from `GET /api/csrf` before the first one and forgets on signing in and out. A
+  request the server refuses for its token is sent once more with a fresh one.
+- **The frame** holds every signed-in screen and stays put as the screens
+  change. A window at least 64rem wide gets the desktop layout: a board under a
+  bar holding the wordmark, links to the calendar and the plan, the time of
+  the last sync and the Upload .fit, Sync now and Sign out actions. A narrower
+  one gets the phone layout: the screen in a column inside the safe area, over
+  tabs for the calendar, the plan and More. More opens a sheet with the user,
+  Garmin's last sync with Sync now, Upload .fit and Sign out. A sheet rises
+  from the bottom edge on a phone and closes when dragged down by its handle;
+  on a desktop it is a card in the middle. A session still planned on a day
+  before the browser's date shows as skipped on every screen; its stored
+  status stays planned.
+- **States** draw the same on every screen. A session is a ring: thick with a
+  tick when done, thin in its discipline's colour while upcoming, thin with a
+  cross when skipped, and thick grey with a plus for an activity no session is
+  matched to; in a calendar day it is a chip in the same states, and on the
+  phone's month a dot. A day is one ring split evenly between its sessions,
+  each arc thick when done and thin otherwise, circled in the accent on today.
+  A day without sessions is a dashed ring and a Rest chip, green and ticked once
+  it is past.
+- **Live updates** ([0012](adr/0012-live-updates.md)): the frame connects to
+  `/socket` with the session's CSRF token and joins `user:<id>`. A `sync` push
+  replaces the cached `GET /api/sync`, and an `upload` push the cached
+  `GET /api/uploads/:id` of its file. A run that finishes and a file that is
+  processed refresh the cached days, seasons, sessions and activities. Every
+  join, the first and each after a dropped connection, reads the sync and the
+  uploads again. A connection the server refuses is tried again with the CSRF
+  token fetched anew.
+- **Toasts** show in a labelled region at the top of the frame, at its right on
+  a desktop. A caution toast is an alert and stays until hidden; the others
+  are a status, and one with a timeout hides itself once it passes without the
+  pointer or the focus on it. Showing a toast with the id of one shown
+  replaces it in place.
+- **Upload .fit** opens a sheet with a drop zone and a file chooser. It posts
+  the `.fit` file to `POST /api/uploads`, reads `GET /api/uploads/:id` once,
+  and follows the file's pushes through Uploaded and Reading the file. A
+  processed file shows its activity tinted by its discipline, with its date,
+  start, duration, distance and average heart rate, and the session it is
+  matched to or Not in the plan, linking to the session or the activity. A
+  file the server refuses or cannot read says why and offers another.
+- **Sync now** posts `POST /api/sync`; the button shows Syncing… while the
+  request is sent or the latest run is queued or running, whatever started it.
+  Beside the bar's actions stands the time of the last sync, or that Garmin is
+  syncing or paused. A manual run shows a toast while it runs, with the files
+  fetched once it has some. A run that finishes with activities shows each one
+  with its day, duration and matched session, and hides after eight seconds;
+  a manual run that finds nothing says so and hides after five. A run that
+  fails stays as a caution toast: the connection is paused, or the sync did not
+  finish, with Try again. A refused request says why.
+- **The calendar** shows a month, a week or a day around a date, at
+  `/calendar/:view/:date`. It reads `GET /api/days` for the dates the view
+  shows, under the query key `["days", from, to]`, prefetches the periods on
+  either side, and reads the season above them for block numbers, cycle names
+  and the weeks to the season's end. On a desktop a bar steps a period back
+  and on, goes to today and switches between Month, Week and Day, keeping the
+  date; in the view switch the view shown leads to today. The calendar opens
+  on today in the view last shown, kept in local storage. On a phone the view
+  switch sits in a bar above the tabs, and a finger sliding along it carries
+  the selection to another view. A sideways drag on the page pulls the period
+  before or after in under the finger, stepping to it when let go far or fast
+  enough.
+  Recorded sessions and activities are listed by their start, then the
+  sessions left in plan order, the first still planned today marked Next.
+  - **Month** holds the whole weeks the month touches. On a desktop each day
+    lists its sessions as chips and links to its day, each week ends in a cell
+    of its cycles and hours that links to its week, and the header counts the
+    month's sessions done and hours trained. On a phone each day shows its
+    sessions as dots; choosing one selects it and lists its sessions below.
+  - **Week** runs Monday to Sunday: each day's hours trained as a bar against
+    those planned, then a row for each day with its ring and hours, linking to
+    it. On a desktop the row holds a card for each session and activity,
+    linking to it, and the header counts the week's sessions done and skipped
+    and its hours.
+  - **Day** on a desktop lays its week across the top, its sessions and
+    unmatched activities on the left over empty readiness and weight trend
+    cards, and the shown session or activity beside them: the day's next
+    session, else its first session or activity. On a phone the week is a
+    strip of day rings over the day's progress and a timeline: each session
+    and activity a card that opens to its figures and a link to its page, the
+    next session open, and an unmatched activity offering Match. Match offers
+    the day's sessions without an activity and puts the match through
+    `PUT /api/sessions/:id/activity`.
+  - **A session** (`/sessions/:id`) and **an activity** (`/activities/:id`, or
+    the session it is matched to) show beside their day on a desktop, and as a
+    page of their own on a phone, under a link back to the day that a swipe to
+    the right also follows. A session shows its state, its stats, or its
+    recorded duration, distance, training load and heart rate against the
+    plan, its structure as a workout profile with the zone legend, the steps
+    and its rationale, and the last session like it. An activity shows its
+    stats. A recording adds its laps, its pool lengths for a swim, and for a
+    ride or a run a chart of power and heart rate or heart rate and pace. The
+    chart asks `GET /api/activities/:id/streams` for about one sample per two
+    pixels of its width, and uPlot, loaded only where the browser can draw on a
+    canvas, draws it in the token colours. A URL that holds no calendar date
+    says so.
+- **The plan** (`/plan`) reads `GET /api/seasons` and then the chosen season,
+  which is the one holding the browser's date unless `season` in the query
+  names another; with more than one season, buttons above the header switch.
+  The season leads as the goal, with its rationale and the weeks left to its
+  end, beside empty trend weight and chronic load stats. A season map lays the
+  phases, the blocks, the hours each week and an empty weight row along the
+  season's dates, marking what is done, current and planned, the spans no
+  phase or block covers, and today. Each week's bar outlines its planned hours
+  and fills them with its done sessions, its activities outside the plan and
+  the sessions still to come, leaving the hours of skipped sessions empty.
+  Hovering or focusing a week lists them, and choosing it opens its week in
+  the calendar. Choosing a phase or block on the map selects it, opening on the block
+  holding today. A table lists the selected phase's blocks with their dates,
+  cycles drawn to length with their pattern, focus and planned hours. The
+  selected block's days form a calendar of weeks from Monday, each row naming
+  the cycles in it, a cycle longer than a week continuing on the next row and
+  a cycle starting mid-week named on its first day. A day shows its sessions
+  in their discipline's colours, or marked done or skipped, and links to its
+  day in the calendar. Beside them, an empty season targets card and a coach
+  log of `GET /api/plan_changes`. On a phone the map is a strip that scrolls
+  through the season from today, and the chosen phase's blocks are cards, the
+  one holding today open, each opening to its cycles as rows of day rings that
+  link to the week of the cycle. A user without a season is told the plan
+  starts with one.
+- Tailwind v4 takes its colours, fonts, radii, spacing step, board width and
+  the text sizes the boards add to Tailwind's scale from `src/styles/tokens.css`
+  ([0011](adr/0011-dashboard-design-system.md)), with Tailwind's default
+  colours, fonts and radii cleared. Other text sizes, tracking, weights and
+  container widths come from Tailwind's defaults. Inter and Barlow Condensed
+  are bundled from fontsource packages.
+- `src/ui/` holds the components screens are built from, one per file: `Stat`,
+  `StatusChip`, `SessionChip`, `DisciplineIcon`, `TrainingZoneBadge`,
+  `TrainingZoneLegend`, `WorkoutProfile`, `SessionRow`, `CoachNote`, `Empty`,
+  `Button`, `TextField`, `StreamChart`, `Card`, `PageHeader`, `TopBar`,
+  `TabBar`, `Sheet`, the marks of sessions and days, the signed-in `Frame` and
+  `PhoneFrame` and the signed-out `Screen`, a narrow column.
+  `WorkoutProfile` draws a session's steps as an SVG of bars as wide as their
+  seconds and as tall as their zone, with repeats written out.
+- A web app manifest starts the installed app at `/calendar` in its own window,
+  with PNG icons for Android and iOS home screens.
 
 ## Environments
 
 | Environment | Server | Database | Jobs | Credential key | Node | Garmin API |
 | --- | --- | --- | --- | --- | --- | --- |
-| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
+| dev | Phoenix on 127.0.0.1:4000, and Vite's dev server on 127.0.0.1:5173 proxying `/api` and `/socket` to it | `vire_dev` | Running, with the cron | Fixed in `config/dev.exs` | Vite's dev server and the FIT decoder | `personal.connectapi.garmin.com` |
 | test | Not started; requests go through the endpoint in-process | `vire_test`, one sandboxed transaction per test | Run by the test with Oban's manual testing mode | Fixed in `config/test.exs` | The FIT decoder | `Req.Test` stubs; the base URL is 127.0.0.1:9, where nothing listens |
 | test, `VIRE_E2E=true` | Phoenix on 127.0.0.1:4002, serving the built dashboard | `vire_e2e`, unsandboxed | Running, without the cron | Fixed in `config/test.exs` | The FIT decoder | 127.0.0.1:9, where nothing listens |
 | prod | Port from `PORT`, redirecting plain HTTP to HTTPS except from localhost and for the health check | `DATABASE_URL` | Running, with the cron | `VIRE_CREDENTIAL_KEY`, 32 bytes in base64; the release does not start without it | The FIT decoder, run from `VIRE_DECODER_SCRIPT`, the path of `decode.js` in a copy of `decoder/` with its packages installed; the release does not start without it | `personal.connectapi.garmin.com` |
@@ -400,7 +632,9 @@ Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
-renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
+renders the whole app against the MSW handlers in `assets/src/mocks`, which
+hold the API's response shapes, whether the browser is signed in and the
+session's CSRF token, which they check as the server does. OAuth
 tests register a client and drive the sign-in and consent pages with their
 CSRF tokens checked, as a browser's posts are, and MCP tests call `/mcp` with
 the access token that flow ends in. Elixir

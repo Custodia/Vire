@@ -22,6 +22,7 @@ defmodule VireWeb.SessionController do
         |> configure_session(renew: true)
         |> clear_session()
         |> put_session(:user_id, user.id)
+        |> put_session(:live_socket_id, live_socket_id())
         |> put_view(VireWeb.UserJSON)
         |> render(:show, user: user)
     end
@@ -35,10 +36,16 @@ defmodule VireWeb.SessionController do
   end
 
   def delete(conn, _params) do
+    if live_socket_id = get_session(conn, :live_socket_id),
+      do: VireWeb.Endpoint.broadcast(live_socket_id, "disconnect", %{})
+
     conn
     |> configure_session(drop: true)
     |> send_resp(:no_content, "")
   end
+
+  defp live_socket_id,
+    do: "user_sockets:" <> Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
 
   defp require_json_body(conn, _opts) do
     with [content_type] <- get_req_header(conn, "content-type"),

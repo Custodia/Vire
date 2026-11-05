@@ -14,7 +14,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "mix do ecto.create + ecto.migrate + phx.server",
+    command: "mix do ecto.create + ecto.migrate + vire.seed_e2e + phx.server",
     cwd: "..",
     env: { MIX_ENV: "test", VIRE_E2E: "true" },
     url: `http://127.0.0.1:${port}/api/health`,

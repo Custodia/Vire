@@ -7,7 +7,7 @@ end
 # The Playwright suite drives the test configuration as a real server.
 if config_env() == :test and System.get_env("VIRE_E2E") == "true" do
   config :vire, Vire.Repo, database: "vire_e2e", pool: DBConnection.ConnectionPool
-  config :vire, VireWeb.Endpoint, server: true
+  config :vire, VireWeb.Endpoint, server: true, check_origin: ["//127.0.0.1"]
   config :vire, Oban, testing: :disabled
   config :vire, Vire.Ingest.Garmin, req_options: [plug: nil]
 end

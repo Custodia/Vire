@@ -5,7 +5,9 @@ defmodule Vire.Ingest do
   SHA-256 the user already has is not stored again.
 
   Activities and their files also arrive from Garmin, through a sync per user
-  bounded by the user's seasons.
+  bounded by the user's seasons. Each sync is recorded as a run from the moment
+  it is queued, and every change to a run or to a file's status is published
+  through `Vire.Events`.
 
   Every function but `reparse_outdated/0`, `enqueue_scheduled_syncs/0` and
   `fetch_signed_file/3`, which takes its user from a signed URL, takes a scope
@@ -19,10 +21,12 @@ defmodule Vire.Ingest do
   alias Vire.Accounts.Scope
   alias Vire.Activities
   alias Vire.Activities.Activity
+  alias Vire.Events
   alias Vire.Ingest.Decoder
   alias Vire.Ingest.FitActivity
   alias Vire.Ingest.ParseWorker
   alias Vire.Ingest.SourceFile
+  alias Vire.Ingest.SyncRun
   alias Vire.Ingest.SyncWorker
   alias Vire.Repo
   alias Vire.Training
@@ -170,23 +174,25 @@ defmodule Vire.Ingest do
 
   @doc """
   Enqueues a Garmin sync of the user's seasons, of the dates in `period` only
-  when one is given, for a user with an unpaused Garmin connection.
+  when one is given, for a user with an unpaused Garmin connection, and
+  answers its run. `trigger` records what asked for it: `:manual`, `:plan` or
+  `:scheduled`.
 
   While a sync of the user waits, enqueuing another widens the waiting one to
-  cover both, and returns it.
+  cover both and answers its run, which a manual request makes manual.
   """
-  @spec enqueue_sync(Scope.t(), Period.t() | nil) ::
-          {:ok, Oban.Job.t()} | {:error, :not_connected | :paused | term()}
-  def enqueue_sync(%Scope{} = scope, period \\ nil) do
+  @spec enqueue_sync(Scope.t(), Period.t() | nil, :manual | :plan | :scheduled) ::
+          {:ok, SyncRun.t()} | {:error, :not_connected | :paused | term()}
+  def enqueue_sync(%Scope{} = scope, period \\ nil, trigger \\ :manual) do
     case Accounts.get_provider_connection(scope, :garmin) do
       nil -> {:error, :not_connected}
       %{paused_at: %DateTime{}} -> {:error, :paused}
-      _connection -> insert_sync(scope, period)
+      _connection -> insert_sync(scope, period, trigger)
     end
   end
 
-  @doc "Enqueues a Garmin sync of every season of the scope's user, and returns the job."
-  def sync_now(%Scope{} = scope), do: enqueue_sync(scope)
+  @doc "Enqueues a Garmin sync of every season of the scope's user, and answers its run."
+  def sync_now(%Scope{} = scope), do: enqueue_sync(scope, nil, :manual)
 
   @doc """
   Enqueues a sync for every user with an unpaused Garmin connection. Returns
@@ -195,7 +201,50 @@ defmodule Vire.Ingest do
   def enqueue_scheduled_syncs do
     :garmin
     |> Accounts.list_unpaused_provider_connections()
-    |> Enum.count(&match?({:ok, _job}, insert_sync(Scope.for_user(&1.user), nil)))
+    |> Enum.count(&match?({:ok, _run}, insert_sync(Scope.for_user(&1.user), nil, :scheduled)))
+  end
+
+  @doc """
+  The state of the scope's Garmin sync: whether a connection is `:active`,
+  `:paused` or there is `:none`, when it last synced, and `run`, by default
+  the scope's latest run, with the activities it found that Vire did not hold
+  yet, each with the session it is matched to or `nil`.
+  """
+  def sync_status(%Scope{} = scope, run \\ :latest) do
+    connection = Accounts.get_provider_connection(scope, :garmin)
+    run = if run == :latest, do: latest_sync_run(scope), else: run
+
+    %{
+      connection: connection_state(connection),
+      last_synced_at: connection && connection.last_synced_at,
+      run: run,
+      activities: run_activities(scope, run)
+    }
+  end
+
+  @doc "The scope's most recently queued sync run, or `nil`."
+  def latest_sync_run(%Scope{user: user}) do
+    SyncRun
+    |> where(user_id: ^user.id)
+    |> order_by(desc: :inserted_at, desc: :id)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp connection_state(nil), do: :none
+  defp connection_state(%{paused_at: %DateTime{}}), do: :paused
+  defp connection_state(_connection), do: :active
+
+  defp run_activities(_scope, nil), do: []
+
+  defp run_activities(scope, %SyncRun{user_id: user_id, new_activity_ids: ids})
+       when user_id == scope.user.id do
+    activities = Activities.list_activities_by_id(scope, ids)
+    sessions = Training.list_matched_sessions(scope, Enum.map(activities, & &1.id))
+
+    activities
+    |> Enum.sort_by(& &1.started_at, DateTime)
+    |> Enum.map(&%{activity: &1, session: Map.get(sessions, &1.id)})
   end
 
   @doc """
@@ -205,15 +254,37 @@ defmodule Vire.Ingest do
   def activity_recorded(%Scope{} = scope, %Activity{local_date: date}),
     do: Training.match_activities(scope, date)
 
-  defp insert_sync(%Scope{user: user}, period) do
-    args = sync_args(user, period)
+  defp insert_sync(%Scope{user: user}, period, trigger) do
+    run_id = Ecto.UUID.generate()
+    args = Map.put(sync_args(user, period), "run_id", run_id)
 
-    Repo.transact(fn ->
-      case Oban.insert(SyncWorker.new(args)) do
-        {:ok, %Oban.Job{conflict?: true, id: id} = job} when not is_nil(id) -> widen(job, args)
-        other -> other
-      end
-    end)
+    with {:ok, run} <- Repo.transact(fn -> queue_run(args, run_id, user, trigger) end) do
+      Events.publish(run.user_id, {:sync_run, run})
+      {:ok, run}
+    end
+  end
+
+  defp queue_run(args, run_id, user, trigger) do
+    with {:ok, job} <- insert_or_widen(args), do: run_of(job, run_id, user, trigger)
+  end
+
+  defp insert_or_widen(args) do
+    case Oban.insert(SyncWorker.new(args)) do
+      {:ok, %Oban.Job{conflict?: true, id: id} = job} when not is_nil(id) -> widen(job, args)
+      other -> other
+    end
+  end
+
+  # A job that kept its args belongs to a run queued before this one.
+  defp run_of(%Oban.Job{args: %{"run_id" => run_id}}, run_id, user, trigger),
+    do: Repo.insert(%SyncRun{id: run_id, user_id: user.id, trigger: trigger})
+
+  defp run_of(%Oban.Job{args: %{"run_id" => waiting_id}}, _run_id, _user, trigger) do
+    run = Repo.get!(SyncRun, waiting_id)
+
+    if trigger == :manual and run.trigger != :manual,
+      do: run |> Ecto.Changeset.change(trigger: :manual) |> Repo.update(),
+      else: {:ok, run}
   end
 
   defp sync_args(user, nil), do: %{"user_id" => user.id, "first" => nil, "last" => nil}
@@ -226,21 +297,7 @@ defmodule Vire.Ingest do
     }
 
   defp widen(%Oban.Job{args: waiting} = job, args) do
-    widened =
-      case {waiting, args} do
-        {%{"first" => nil}, _} ->
-          waiting
-
-        {_, %{"first" => nil}} ->
-          args
-
-        _both_bounded ->
-          %{
-            args
-            | "first" => min(waiting["first"], args["first"]),
-              "last" => max(waiting["last"], args["last"])
-          }
-      end
+    widened = Map.merge(waiting, widened_range(waiting, args))
 
     if widened == waiting do
       {:ok, job}
@@ -248,6 +305,15 @@ defmodule Vire.Ingest do
       replace_waiting_args(job, widened, args)
     end
   end
+
+  defp widened_range(%{"first" => nil}, _args), do: %{"first" => nil, "last" => nil}
+  defp widened_range(_waiting, %{"first" => nil}), do: %{"first" => nil, "last" => nil}
+
+  defp widened_range(waiting, args),
+    do: %{
+      "first" => min(waiting["first"], args["first"]),
+      "last" => max(waiting["last"], args["last"])
+    }
 
   # The waiting job may start between the conflict and this update; it then
   # runs with its old args, and a new job covers the requested range.
@@ -283,8 +349,10 @@ defmodule Vire.Ingest do
   defp parse(scope, file) do
     with {:ok, decoded} <- decode(file),
          {:ok, parsed} <- FitActivity.from_decoded(decoded),
-         {:ok, activity} <- store_parsed(scope, file, parsed) do
-      activity_recorded(scope, activity)
+         {:ok, {activity, processed}} <- store_parsed(scope, file, parsed) do
+      result = activity_recorded(scope, activity)
+      publish_file(processed)
+      result
     else
       {:error, {:decoder, reason}} ->
         mark_failed(file, "the decoder did not answer: #{inspect(reason)}")
@@ -311,13 +379,13 @@ defmodule Vire.Ingest do
   defp store_parsed(scope, file, parsed) do
     Repo.transact(fn ->
       with {:ok, activity} <- Activities.replace_from_file(scope, file, parsed),
-           {:ok, _file} <-
+           {:ok, processed} <-
              set_status(file, %{
                status: :processed,
                processor_version: ParseWorker.processor_version(),
                error: nil
              }) do
-        {:ok, activity}
+        {:ok, {activity, processed}}
       end
     end)
   end
@@ -328,12 +396,18 @@ defmodule Vire.Ingest do
   end
 
   defp mark_failed(file, message) do
-    set_status(file, %{
-      status: :failed,
-      processor_version: ParseWorker.processor_version(),
-      error: message
-    })
+    with {:ok, failed} <-
+           set_status(file, %{
+             status: :failed,
+             processor_version: ParseWorker.processor_version(),
+             error: message
+           }) do
+      publish_file(failed)
+      {:ok, failed}
+    end
   end
+
+  defp publish_file(%SourceFile{} = file), do: Events.publish(file.user_id, {:source_file, file})
 
   defp set_status(file, attrs),
     do: %{file | content: nil} |> SourceFile.status_changeset(attrs) |> Repo.update()
