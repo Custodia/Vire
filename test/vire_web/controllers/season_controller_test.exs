@@ -198,7 +198,7 @@ defmodule VireWeb.SeasonControllerTest do
   defp sessions_on(body, date), do: day_on(body, date)["sessions"]
 
   defp activity(scope, id, %DateTime{} = started_at, discipline) do
-    {:ok, activity} =
+    {:inserted, activity} =
       Activities.upsert_provider_activity(scope, %{
         provider: :garmin,
         external_id: to_string(id),

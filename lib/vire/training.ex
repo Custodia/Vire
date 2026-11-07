@@ -113,7 +113,32 @@ defmodule Vire.Training do
   Each session needs its `id` and `date`.
   """
   def list_candidates(%Scope{} = scope, sessions) do
-    dates = sessions |> Enum.map(& &1.date) |> Enum.uniq()
+    wanted = MapSet.new(sessions, & &1.id)
+
+    scope
+    |> score_dates(Enum.map(sessions, & &1.date))
+    |> Enum.filter(&MapSet.member?(wanted, &1.session_id))
+    |> Enum.group_by(& &1.session_id, &Map.take(&1, [:activity_id, :confidence, :why]))
+  end
+
+  @doc """
+  The sessions each of the scope's `activities` could be, by activity id: for
+  an activity no session is matched to, the sessions without an activity on
+  its local date that are not skipped and that `Vire.Training.Matcher` gives
+  any confidence, most likely first, each as its `session_id` and
+  `confidence`.
+  """
+  def list_candidate_sessions(%Scope{} = scope, activities) do
+    wanted = MapSet.new(activities, & &1.id)
+
+    scope
+    |> score_dates(Enum.map(activities, & &1.local_date))
+    |> Enum.filter(&MapSet.member?(wanted, &1.activity_id))
+    |> Enum.group_by(& &1.activity_id, &Map.take(&1, [:session_id, :confidence]))
+  end
+
+  defp score_dates(scope, dates) do
+    dates = Enum.uniq(dates)
 
     open =
       from(s in for_user(Session, scope),
@@ -131,15 +156,12 @@ defmodule Vire.Training do
       |> Repo.all()
       |> Enum.group_by(& &1.local_date)
 
-    wanted = MapSet.new(sessions, & &1.id)
-
     open
     |> Enum.flat_map(fn {date, sessions} ->
       Matcher.score(Map.get(activities, date, []), sessions)
     end)
-    |> Enum.filter(&(MapSet.member?(wanted, &1.session_id) and &1.confidence > 0))
+    |> Enum.filter(&(&1.confidence > 0))
     |> Enum.sort_by(& &1.confidence, :desc)
-    |> Enum.group_by(& &1.session_id, &Map.take(&1, [:activity_id, :confidence, :why]))
   end
 
   @doc """
@@ -674,7 +696,7 @@ defmodule Vire.Training do
   defp request_sync(_scope, nil), do: :ok
 
   defp request_sync(%Scope{} = scope, %Period{} = period) do
-    Ingest.enqueue_sync(scope, period)
+    Ingest.enqueue_sync(scope, period, :plan)
     :ok
   end
 

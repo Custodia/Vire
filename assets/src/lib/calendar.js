@@ -53,11 +53,11 @@ export function chunk(items, size) {
 const startOf = (activity) => Date.parse(activity.started_at);
 
 /**
- * A day as the calendar draws it, from the days API's answer: its sessions
- * with the status they show as of `today`, the activities no session is
- * matched to, and its totals. `rest` is "kept" for a day without sessions
- * before today and "ahead" for one from today on; a date outside the plan has
- * neither.
+ * A day as the screens draw it, from its date, its day and the activities on
+ * it no session is matched to: its sessions with the status they show as of
+ * `today`, those activities, and its totals. `rest` is "kept" for a day
+ * without sessions before today and "ahead" for one from today on; a date
+ * outside the plan has neither.
  */
 export function dayOf(answer, today) {
   const { date, day, activities } = answer;

@@ -70,6 +70,8 @@ defmodule VireWeb.Router do
     put "/sessions/:id/activity", TrainingSessionController, :match
     get "/activities/:id", ActivityController, :show
     get "/activities/:id/streams", ActivityController, :streams
+    get "/sync", SyncController, :show
+    post "/sync", SyncController, :create
     post "/uploads", UploadController, :create
     get "/uploads/:id", UploadController, :show
   end

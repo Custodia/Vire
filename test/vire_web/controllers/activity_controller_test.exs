@@ -2,6 +2,7 @@ defmodule VireWeb.ActivityControllerTest do
   use VireWeb.ConnCase, async: true
 
   import Vire.ActivitiesFixtures
+  import Vire.TrainingFixtures
 
   alias Vire.Accounts.Scope
 
@@ -20,11 +21,35 @@ defmodule VireWeb.ActivityControllerTest do
              "utc_offset_seconds" => 10_800,
              "duration_seconds" => 600,
              "laps" => [%{"lap_index" => 0, "elapsed_seconds" => 600, "avg_heart_rate" => hr}],
-             "lengths" => []
+             "lengths" => [],
+             "session" => nil
            } = json_response(get(conn, ~p"/api/activities/#{run.id}"), 200)
 
     assert id == run.id
     assert is_integer(hr)
+  end
+
+  test "answers the session an activity is matched to", %{conn: conn, scope: scope} do
+    july = period(~D[2026-07-13], ~D[2026-07-19])
+    season = season_fixture(scope, %{period: july})
+    phase = phase_fixture(scope, season, %{period: july})
+    block = block_fixture(scope, phase, %{period: july})
+    cycle_fixture(scope, block, %{period: july})
+
+    session =
+      session_fixture(scope, %{
+        date: ~D[2026-07-16],
+        discipline: :run,
+        structure: %{"title" => "Easy run"},
+        planned_seconds: 600
+      })
+
+    run = activity_fixture(scope, "run.fit")
+
+    assert %{"session" => %{"id" => id, "title" => "Easy run", "planned_seconds" => 600}} =
+             json_response(get(conn, ~p"/api/activities/#{run.id}"), 200)
+
+    assert id == session.id
   end
 
   test "answers a ride's power and heart rate downsampled to the step",

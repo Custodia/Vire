@@ -11,12 +11,14 @@ defmodule Vire.Ingest.GarminSyncTest do
   alias Vire.Activities.Activity
   alias Vire.Activities.ActivityStream
   alias Vire.Activities.Lap
+  alias Vire.Events
   alias Vire.Ingest
   alias Vire.Ingest.DownloadWorker
   alias Vire.Ingest.Garmin
   alias Vire.Ingest.Garmin.TokenCache
   alias Vire.Ingest.GarminSync
   alias Vire.Ingest.SourceFile
+  alias Vire.Ingest.SyncRun
   alias Vire.Ingest.SyncScheduler
   alias Vire.Ingest.SyncWorker
   alias Vire.Training.Session
@@ -134,6 +136,16 @@ defmodule Vire.Ingest.GarminSyncTest do
 
   defp activities, do: Activity |> order_by(:started_at) |> Repo.all()
 
+  defp run_fixture(user), do: Repo.insert!(%SyncRun{user_id: user.id, trigger: :manual})
+
+  defp published_states(run_id) do
+    receive do
+      {:sync_run, %SyncRun{id: ^run_id, state: state}} -> [state | published_states(run_id)]
+    after
+      0 -> []
+    end
+  end
+
   defp connection(user), do: Accounts.get_provider_connection(Scope.for_user(user), :garmin)
 
   describe "discovery" do
@@ -185,6 +197,7 @@ defmodule Vire.Ingest.GarminSyncTest do
       assert :ok =
                perform_job(SyncWorker, %{
                  user_id: context.user.id,
+                 run_id: run_fixture(context.user).id,
                  first: "2026-07-16",
                  last: "2026-09-30"
                })
@@ -419,7 +432,8 @@ defmodule Vire.Ingest.GarminSyncTest do
       assert {:cancel, "the activity no longer exists"} =
                perform_job(DownloadWorker, %{
                  user_id: context.user.id,
-                 activity_id: Ecto.UUID.generate()
+                 activity_id: Ecto.UUID.generate(),
+                 run_id: run_fixture(context.user).id
                })
     end
 
@@ -427,7 +441,11 @@ defmodule Vire.Ingest.GarminSyncTest do
       activity = activity_fixture(context.scope, "run.fit")
 
       assert :ok =
-               perform_job(DownloadWorker, %{user_id: context.user.id, activity_id: activity.id})
+               perform_job(DownloadWorker, %{
+                 user_id: context.user.id,
+                 activity_id: activity.id,
+                 run_id: run_fixture(context.user).id
+               })
 
       refute_received {:download, _}
     end
@@ -545,15 +563,185 @@ defmodule Vire.Ingest.GarminSyncTest do
 
     test "is cancelled without a user, a connection or with a paused one", context do
       assert {:cancel, "the user no longer exists"} =
-               perform_job(SyncWorker, %{user_id: Ecto.UUID.generate()})
+               perform_job(SyncWorker, %{
+                 user_id: Ecto.UUID.generate(),
+                 run_id: Ecto.UUID.generate()
+               })
+
+      unconnected = user_fixture()
 
       assert {:cancel, "the user has no Garmin connection"} =
-               perform_job(SyncWorker, %{user_id: user_fixture().id})
+               perform_job(SyncWorker, %{
+                 user_id: unconnected.id,
+                 run_id: run_fixture(unconnected).id
+               })
 
       Accounts.pause_provider_connection(context.scope, context.connection)
+      run = run_fixture(context.user)
 
       assert {:cancel, "the Garmin connection is paused"} =
-               perform_job(SyncWorker, %{user_id: context.user.id})
+               perform_job(SyncWorker, %{user_id: context.user.id, run_id: run.id})
+
+      assert %SyncRun{state: :failed, error: "the Garmin connection is paused"} =
+               Repo.reload!(run)
+    end
+  end
+
+  describe "the run" do
+    setup %{scope: scope} do
+      :ok = Events.subscribe(scope)
+    end
+
+    test "is queued, searches, fetches, and finishes once every file is parsed", context do
+      stub_garmin([ride_summary(), run_summary()], %{
+        "7000001" => fit_fixture("ride.fit"),
+        "7000002" => fit_fixture("run.fit")
+      })
+
+      {:ok, %SyncRun{state: :queued, id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin, with_scheduled: true, with_recursion: true)
+
+      assert %SyncRun{state: :fetching, files_total: 2, files_fetched: 2, files_parsed: 0} =
+               Repo.get!(SyncRun, run_id)
+
+      Oban.drain_queue(queue: :ingest)
+
+      run = Repo.get!(SyncRun, run_id)
+      assert %SyncRun{state: :finished, error: nil} = run
+      assert %{files_total: 2, files_fetched: 2, files_parsed: 2, files_failed: 0} = run
+      assert Enum.sort(run.new_activity_ids) == Enum.sort(Enum.map(activities(), & &1.id))
+      assert DateTime.compare(run.started_at, run.searched_at) != :gt
+      assert DateTime.compare(run.searched_at, run.finished_at) != :gt
+
+      states = published_states(run_id)
+      assert Enum.dedup(states) == [:queued, :searching, :fetching, :finished]
+    end
+
+    test "counts a file that fails to parse as given up on", context do
+      stub_garmin([ride_summary()], %{"7000001" => fit_fixture("corrupt.fit")})
+
+      {:ok, %SyncRun{id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin, with_scheduled: true, with_recursion: true)
+      Oban.drain_queue(queue: :ingest)
+
+      assert %SyncRun{state: :finished, files_fetched: 1, files_parsed: 0, files_failed: 1} =
+               Repo.get!(SyncRun, run_id)
+    end
+
+    test "finishes with its searches when there is no file to fetch", context do
+      stub_garmin([ride_summary(7_000_001, %{"manualActivity" => true})])
+
+      {:ok, %SyncRun{id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin)
+
+      assert %SyncRun{state: :finished, files_total: 0, new_activity_ids: [_ride]} =
+               Repo.get!(SyncRun, run_id)
+    end
+
+    test "counts a file Garmin does not have as given up on, and finishes", context do
+      stub_garmin([ride_summary()])
+
+      {:ok, %SyncRun{id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin, with_scheduled: true, with_recursion: true)
+
+      assert %SyncRun{state: :finished, files_total: 1, files_fetched: 0, files_failed: 1} =
+               Repo.get!(SyncRun, run_id)
+    end
+
+    test "counts as new only the activities Vire did not hold", context do
+      uploaded = activity_fixture(context.scope, "ride.fit")
+      stub_garmin([summary(7_000_001, DateTime.add(@ride_start, 40), -7 * 3600, "road_biking")])
+      {:ok, %SyncRun{id: first}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin)
+
+      stub_garmin([
+        summary(7_000_001, DateTime.add(@ride_start, 40), -7 * 3600, "road_biking"),
+        run_summary()
+      ])
+
+      {:ok, %SyncRun{id: second}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin)
+
+      assert %SyncRun{new_activity_ids: []} = Repo.get!(SyncRun, first)
+      [run] = activities() |> Enum.reject(&(&1.id == uploaded.id))
+      assert %SyncRun{new_activity_ids: [run_id]} = Repo.get!(SyncRun, second)
+      assert run_id == run.id
+    end
+
+    test "keeps searching with the error while a failed search is tried again", context do
+      season_fixture(context.scope, %{
+        name: "Winter",
+        period: period(~D[2026-01-05], ~D[2026-02-15])
+      })
+
+      stub_garmin([ride_summary()], %{}, failing_searches: ["2026-01-05"])
+      {:ok, run} = Ingest.sync_now(context.scope)
+      args = %{user_id: context.user.id, run_id: run.id, first: nil, last: nil}
+
+      assert {:error, _reason} = perform_job(SyncWorker, args, attempt: 1)
+
+      assert %SyncRun{state: :searching, error: "1 of 2 searches failed" <> _} =
+               Repo.reload!(run)
+
+      assert {:error, _reason} = perform_job(SyncWorker, args, attempt: 3)
+      assert %SyncRun{state: :failed, finished_at: %DateTime{}} = Repo.reload!(run)
+    end
+
+    test "fails with the reason when Garmin refuses the key", context do
+      Req.Test.stub(Garmin, &Plug.Conn.send_resp(&1, 401, ""))
+
+      {:ok, %SyncRun{id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin)
+
+      assert %SyncRun{state: :failed, error: error} = Repo.get!(SyncRun, run_id)
+      assert error =~ "Garmin refused the API key"
+      assert error =~ "the Garmin connection is paused"
+    end
+
+    test "counts a download that fails on its last attempt as given up on", context do
+      stub_garmin([ride_summary()])
+      {:ok, %SyncRun{id: run_id}} = Ingest.sync_now(context.scope)
+      Oban.drain_queue(queue: :garmin)
+      [%{args: args}] = all_enqueued(worker: DownloadWorker)
+
+      Req.Test.stub(Garmin, fn
+        %{request_path: @token_path} = conn -> Req.Test.text(conn, jwt())
+        conn -> Plug.Conn.send_resp(conn, 503, "")
+      end)
+
+      assert {:error, _reason} = perform_job(DownloadWorker, args, attempt: 1)
+      assert %SyncRun{state: :fetching, files_failed: 0} = Repo.get!(SyncRun, run_id)
+
+      assert {:error, _reason} = perform_job(DownloadWorker, args, attempt: 5)
+      assert %SyncRun{state: :finished, files_failed: 1} = Repo.get!(SyncRun, run_id)
+    end
+
+    test "records what started it, and a manual request makes a waiting run manual", context do
+      assert 1 = Ingest.enqueue_scheduled_syncs()
+      assert %SyncRun{trigger: :scheduled, id: run_id} = Ingest.latest_sync_run(context.scope)
+
+      assert {:ok, %SyncRun{id: ^run_id, trigger: :manual}} = Ingest.sync_now(context.scope)
+      assert %SyncRun{trigger: :manual} = Repo.get!(SyncRun, run_id)
+    end
+
+    test "of a new season is started by the plan", %{scope: scope, user: user} do
+      Oban.drain_queue(queue: :garmin)
+      Repo.delete_all(SyncRun)
+      Repo.delete_all(Oban.Job)
+
+      season_fixture(scope, %{name: "Autumn", period: period(~D[2026-09-01], ~D[2026-09-30])})
+
+      assert %SyncRun{trigger: :plan, state: :queued} = Ingest.latest_sync_run(scope)
+      assert_enqueued(worker: SyncWorker, args: %{user_id: user.id, first: "2026-09-01"})
+    end
+
+    test "is not published when the sync cannot be queued" do
+      scope = Scope.for_user(user_fixture())
+      :ok = Events.subscribe(scope)
+
+      assert {:error, :not_connected} = Ingest.sync_now(scope)
+
+      refute_receive {:sync_run, _run}
     end
   end
 
@@ -563,13 +751,16 @@ defmodule Vire.Ingest.GarminSyncTest do
       {:ok, second} = Ingest.enqueue_sync(Scope.for_user(user))
 
       assert second.id == first.id
-      assert [_one] = all_enqueued(worker: SyncWorker)
+      assert [%{args: %{"run_id" => run_id}}] = all_enqueued(worker: SyncWorker)
+      assert run_id == first.id
+      assert [_one] = Repo.all(SyncRun)
     end
 
     test "widens a waiting sync to cover a second range", %{user: user} do
-      {:ok, job} =
+      {:ok, _run} =
         Ingest.enqueue_sync(Scope.for_user(user), period(~D[2026-07-10], ~D[2026-07-12]))
 
+      [job] = all_enqueued(worker: SyncWorker)
       {:ok, _} = Ingest.enqueue_sync(Scope.for_user(user), period(~D[2026-07-01], ~D[2026-07-05]))
 
       assert %{args: %{"first" => "2026-07-01", "last" => "2026-07-12"}} =
@@ -591,10 +782,16 @@ defmodule Vire.Ingest.GarminSyncTest do
       refute_enqueued(worker: SyncWorker)
     end
 
-    test "sync now enqueues the scope's sync and returns the job", %{scope: scope, user: user} do
-      assert {:ok, %Oban.Job{args: %{"user_id" => user_id}}} = Ingest.sync_now(scope)
-      assert user_id == user.id
-      assert_enqueued(worker: SyncWorker, args: %{user_id: user.id, first: nil, last: nil})
+    test "sync now enqueues the scope's sync and answers its queued run", context do
+      assert {:ok, %SyncRun{state: :queued, trigger: :manual} = run} =
+               Ingest.sync_now(context.scope)
+
+      assert run.user_id == context.user.id
+
+      assert_enqueued(
+        worker: SyncWorker,
+        args: %{user_id: context.user.id, run_id: run.id, first: nil, last: nil}
+      )
     end
 
     test "the schedule skips a paused connection", context do

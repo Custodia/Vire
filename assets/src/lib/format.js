@@ -43,6 +43,19 @@ export function formatClock(seconds) {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${secs}` : `${minutes}:${secs}`;
 }
 
+/** A duration in hours and minutes on a clock: 0:25 or 2:41. */
+export function formatHoursMinutes(seconds) {
+  const minutes = Math.round(seconds / 60);
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+/** A file's size in kilobytes, or in megabytes from one: 38 KB or 1.4 MB. */
+export function formatFileSize(bytes) {
+  return bytes < 1024 * 1024
+    ? `${Math.max(1, Math.round(bytes / 1024))} KB`
+    : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** A distance in metres below a kilometre, in kilometres from there. */
 export function formatDistance(metres) {
   return metres < 1000 ? `${Math.round(metres)} m` : `${(metres / 1000).toFixed(2)} km`;
@@ -63,6 +76,14 @@ const dayAndMonth = new Intl.DateTimeFormat("en-GB", {
 const monthName = new Intl.DateTimeFormat("en-GB", { month: "short", timeZone: "UTC" });
 
 const weekdayName = new Intl.DateTimeFormat("en-GB", { weekday: "short", timeZone: "UTC" });
+
+const localClock = new Intl.DateTimeFormat("en-GB", {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+const localDayAndMonth = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" });
 
 const longDay = new Intl.DateTimeFormat("en-GB", {
   weekday: "long",
@@ -123,6 +144,15 @@ export function formatMonthName(isoDate) {
 /** An ISO date as its weekday alone: Fri. */
 export function formatWeekday(isoDate) {
   return weekdayName.format(asDate(isoDate));
+}
+
+/**
+ * A moment as the browser's wall-clock time on the browser's `today`, such as
+ * 06:05, and as its day and month on another day, such as 2 Nov.
+ */
+export function formatMoment(timestamp, today = localDate()) {
+  const moment = new Date(timestamp);
+  return localDate(moment) === today ? localClock.format(moment) : localDayAndMonth.format(moment);
 }
 
 /** Seconds as hours to one decimal: 8.5. */

@@ -416,14 +416,22 @@ describe("on a phone", () => {
 
     const more = await screen.findByRole("dialog", { name: "Ada Lovelace" });
     expect(within(more).getByText("ada@example.com")).toBeVisible();
+    expect(within(more).getByText(/^Synced 06:05/)).toBeVisible();
     expect(within(more).getByRole("button", { name: "Sign out" })).toBeVisible();
+    await userEvent.click(within(more).getByRole("button", { name: /Upload .fit/ }));
+
+    expect(await screen.findByRole("dialog", { name: "Upload a .fit file" })).toBeVisible();
   });
 
-  test("signs out from More", async () => {
+  test("syncs and signs out from More", async () => {
     const { router } = renderApp("/calendar/day/2026-11-03");
 
     await userEvent.click(await screen.findByRole("button", { name: "More" }));
     const more = await screen.findByRole("dialog", { name: "Ada Lovelace" });
+    await userEvent.click(within(more).getByRole("button", { name: "Sync now" }));
+    expect(await within(more).findByText("Syncing…")).toBeVisible();
+    expect(within(more).getByRole("button", { name: "Sync now" })).toBeDisabled();
+
     await userEvent.click(within(more).getByRole("button", { name: "Sign out" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
   });
