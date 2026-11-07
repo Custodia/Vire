@@ -87,13 +87,13 @@ defmodule Vire.Training do
   end
 
   @doc """
-  The day on `date`, with the cycle, block, phase and season above it as
-  `context` and its sessions in position order, or `nil`.
+  The day on `date`, with its cycle, the cycle, block, phase and season above
+  it as `context`, and its sessions in position order, or `nil`.
   """
   def get_day(%Scope{} = scope, %Date{} = date) do
     scope
     |> day_on(date)
-    |> Repo.preload([:context, sessions: sessions_query(scope)])
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
   end
 
   @doc "The scope's sessions matched to the activities with `activity_ids`, by activity id."
@@ -113,7 +113,32 @@ defmodule Vire.Training do
   Each session needs its `id` and `date`.
   """
   def list_candidates(%Scope{} = scope, sessions) do
-    dates = sessions |> Enum.map(& &1.date) |> Enum.uniq()
+    wanted = MapSet.new(sessions, & &1.id)
+
+    scope
+    |> score_dates(Enum.map(sessions, & &1.date))
+    |> Enum.filter(&MapSet.member?(wanted, &1.session_id))
+    |> Enum.group_by(& &1.session_id, &Map.take(&1, [:activity_id, :confidence, :why]))
+  end
+
+  @doc """
+  The sessions each of the scope's `activities` could be, by activity id: for
+  an activity no session is matched to, the sessions without an activity on
+  its local date that are not skipped and that `Vire.Training.Matcher` gives
+  any confidence, most likely first, each as its `session_id` and
+  `confidence`.
+  """
+  def list_candidate_sessions(%Scope{} = scope, activities) do
+    wanted = MapSet.new(activities, & &1.id)
+
+    scope
+    |> score_dates(Enum.map(activities, & &1.local_date))
+    |> Enum.filter(&MapSet.member?(wanted, &1.activity_id))
+    |> Enum.group_by(& &1.activity_id, &Map.take(&1, [:session_id, :confidence]))
+  end
+
+  defp score_dates(scope, dates) do
+    dates = Enum.uniq(dates)
 
     open =
       from(s in for_user(Session, scope),
@@ -131,15 +156,12 @@ defmodule Vire.Training do
       |> Repo.all()
       |> Enum.group_by(& &1.local_date)
 
-    wanted = MapSet.new(sessions, & &1.id)
-
     open
     |> Enum.flat_map(fn {date, sessions} ->
       Matcher.score(Map.get(activities, date, []), sessions)
     end)
-    |> Enum.filter(&(MapSet.member?(wanted, &1.session_id) and &1.confidence > 0))
+    |> Enum.filter(&(&1.confidence > 0))
     |> Enum.sort_by(& &1.confidence, :desc)
-    |> Enum.group_by(& &1.session_id, &Map.take(&1, [:activity_id, :confidence, :why]))
   end
 
   @doc """
@@ -310,6 +332,57 @@ defmodule Vire.Training do
     do: %{level: level, id: Ecto.UUID.load!(id), message: message}
 
   defp dates(first, last), do: "#{first} to #{last}"
+
+  @doc """
+  The days a period holds, each loaded as `get_day/2` loads it, in date order.
+  A date outside every cycle has no day.
+  """
+  def list_days(%Scope{} = scope, %Period{} = period) do
+    Day
+    |> for_user(scope)
+    |> on_days(period)
+    |> order_by(:day)
+    |> Repo.all()
+    |> Repo.preload([:cycle, :context, sessions: sessions_query(scope)])
+  end
+
+  @doc """
+  The scope's session with `id`, with its date and its day, the day loaded as
+  `get_day/2` loads it without its sessions, or `nil`.
+  """
+  def get_session(%Scope{} = scope, id) do
+    case session_with_date(scope, id) do
+      nil -> nil
+      session -> Repo.preload(session, day: [:cycle, :context])
+    end
+  end
+
+  @doc """
+  The scope's latest session before `session`'s date that has its discipline
+  and title and is matched to an activity, with its date, or `nil`.
+  """
+  def get_previous_session(%Scope{} = scope, %Session{date: %Date{} = date} = session) do
+    scope
+    |> sessions_query()
+    |> exclude(:order_by)
+    |> where([s, d], s.discipline == ^session.discipline and not is_nil(s.activity_id))
+    |> where([s, d], d.day < ^date)
+    |> where([s], fragment("coalesce(?->>'title', '')", s.structure) == ^own_title(session))
+    |> order_by([s, d], desc: d.day, desc: s.position)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  defp own_title(%Session{structure: %{"title" => title}}) when is_binary(title), do: title
+  defp own_title(%Session{}), do: ""
+
+  @doc """
+  The scope's activities on the local `date`, or on the local dates a period
+  holds, that no session is matched to, earliest first.
+  """
+  def list_unmatched_activities(%Scope{} = scope, dates) do
+    scope |> unmatched_activities(dates) |> Repo.all()
+  end
 
   ## Seasons, phases, blocks and cycles
 
@@ -551,6 +624,21 @@ defmodule Vire.Training do
     end
   end
 
+  @doc """
+  The scope's latest `limit` plan changes, newest first, each paired with the
+  name of the MCP client that made it, or `nil`.
+  """
+  def list_recent_changes(%Scope{} = scope, limit) do
+    from(c in for_user(PlanChange, scope),
+      left_join: client in Vire.Mcp.Client,
+      on: client.id == c.mcp_client_id,
+      order_by: [desc: c.inserted_at, desc: c.id],
+      limit: ^limit,
+      select: {c, client.name}
+    )
+    |> Repo.all()
+  end
+
   ## Helpers
 
   defp match_pair(%{session_id: id, activity_id: activity_id}, sessions) do
@@ -608,7 +696,7 @@ defmodule Vire.Training do
   defp request_sync(_scope, nil), do: :ok
 
   defp request_sync(%Scope{} = scope, %Period{} = period) do
-    Ingest.enqueue_sync(scope, period)
+    Ingest.enqueue_sync(scope, period, :plan)
     :ok
   end
 
@@ -830,6 +918,9 @@ defmodule Vire.Training do
   defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
 
   defp on_local_dates(query, %Date{} = date), do: where(query, [a], a.local_date == ^date)
+
+  defp on_local_dates(query, %Period{first: first, last: last}),
+    do: where(query, [a], a.local_date >= ^first and a.local_date <= ^last)
 
   defp on_local_dates(query, dates) when is_list(dates),
     do: where(query, [a], a.local_date in ^dates)

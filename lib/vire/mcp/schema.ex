@@ -8,7 +8,9 @@ defmodule Vire.Mcp.Schema do
   `items`, `minItems`, `maxItems`, `minimum`, `maximum`, `minLength`, the
   `date` and `uuid` formats, `anyOf`, `oneOf`, and `$ref` to the root's
   `$defs`. A `oneOf` picks the branch whose `const` properties the value
-  holds, so an error names the fields of the branch the value meant.
+  holds, and a failing `anyOf` answers the errors of the branch missing the
+  fewest required fields, so an error names the fields of the branch the
+  value meant.
   """
 
   @type error :: %{path: String.t(), message: String.t()}
@@ -149,7 +151,7 @@ defmodule Vire.Mcp.Schema do
       branches
       |> Enum.zip(results)
       |> Enum.sort_by(fn {branch, errors} ->
-        {not type_matches?(branch, value), length(errors)}
+        {not type_matches?(branch, value), missing(branch, value), length(errors)}
       end)
       |> hd()
       |> elem(1)
@@ -176,6 +178,11 @@ defmodule Vire.Mcp.Schema do
         branch |> consts() |> Enum.map_join(" ", &elem(&1, 1))
       end)
   end
+
+  defp missing(branch, value) when is_map(value),
+    do: Enum.count(Map.get(branch, :required, []), &(not Map.has_key?(value, &1)))
+
+  defp missing(_branch, _value), do: 0
 
   defp type_matches?(%{type: types}, value), do: Enum.any?(List.wrap(types), &type?(&1, value))
   defp type_matches?(_branch, _value), do: true

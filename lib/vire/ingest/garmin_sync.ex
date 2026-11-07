@@ -6,7 +6,8 @@ defmodule Vire.Ingest.GarminSync do
   Discovery stores every summary as an activity and queues a download for each
   activity that has no file yet, a few seconds apart, on the `garmin` queue
   that sends Garmin one request at a time. A download stores the `.fit` file,
-  attaches it to its activity and queues its parse.
+  attaches it to its activity and queues its parse. Both record their progress
+  on the sync's run.
   """
 
   require Logger
@@ -21,6 +22,7 @@ defmodule Vire.Ingest.GarminSync do
   alias Vire.Ingest.DownloadWorker
   alias Vire.Ingest.FitActivity
   alias Vire.Ingest.Garmin
+  alias Vire.Ingest.SyncRuns
   alias Vire.Repo
   alias Vire.Training
   alias Vire.Training.Period
@@ -61,22 +63,33 @@ defmodule Vire.Ingest.GarminSync do
 
   @doc """
   Searches Garmin for the dates `periods/3` gives and stores every summary
-  found. After every search succeeds the connection records the sync.
+  found, adding the activities Vire did not hold and the downloads queued to
+  the run with `run_id`. After every search succeeds the connection records
+  the sync.
 
   A key the token endpoint refuses, or a run in which every search fails,
   pauses the connection and answers `{:cancel, reason}`. A run in which only
   some searches fail answers `{:error, reason}`, so the job is tried again.
   """
-  def run(%Scope{} = scope, %ProviderConnection{} = connection, range, %Date{} = today) do
+  def run(%Scope{} = scope, %ProviderConnection{} = connection, range, %Date{} = today, run_id) do
     periods = periods(scope, range, today)
     results = search(scope, connection, periods)
 
-    results
-    |> Enum.flat_map(fn
-      {:ok, activities} -> activities
-      {:error, _reason} -> []
-    end)
-    |> enqueue_downloads(scope)
+    found =
+      Enum.flat_map(results, fn
+        {:ok, found} -> found
+        {:error, _reason} -> []
+      end)
+
+    queued =
+      for(%{download?: true, activity: activity} <- found, do: activity)
+      |> enqueue_downloads(scope, run_id)
+
+    SyncRuns.found(
+      run_id,
+      for(%{new?: true, activity: activity} <- found, do: activity.id),
+      queued
+    )
 
     errors = Enum.filter(results, &match?({:error, _}, &1))
     refused = Enum.find_value(errors, &refused_status/1)
@@ -98,15 +111,21 @@ defmodule Vire.Ingest.GarminSync do
 
   @doc """
   Downloads the original file of the scope's activity from Garmin, stores it,
-  attaches it to the activity and queues its parse. An activity with a file
-  already is left as it is.
+  attaches it to the activity and queues its parse, which counts the file on
+  the run with `run_id`. A parse of the file already waiting counts it on the
+  run at once. An activity with a file already is left as it is.
   """
-  def download(%Scope{} = scope, %ProviderConnection{} = connection, %Activity{} = activity) do
+  def download(
+        %Scope{} = scope,
+        %ProviderConnection{} = connection,
+        %Activity{} = activity,
+        run_id \\ nil
+      ) do
     case activity do
       %Activity{source_file_id: nil, provider: :garmin, external_id: external_id} ->
         scope
         |> Garmin.download_activity_file(connection, external_id)
-        |> store_download(scope, connection, activity)
+        |> store_download(scope, connection, activity, run_id)
 
       %Activity{} ->
         :ok
@@ -167,16 +186,19 @@ defmodule Vire.Ingest.GarminSync do
     for summary <- summaries,
         attrs = summary_attrs(summary),
         attrs != nil,
-        {:ok, activity} <- [store_summary(scope, attrs)],
-        is_nil(activity.source_file_id) and not manual?(summary),
-        do: activity
+        {outcome, activity} <- [store_summary(scope, attrs)],
+        do: %{
+          activity: activity,
+          new?: outcome == :inserted,
+          download?: is_nil(activity.source_file_id) and not manual?(summary)
+        }
   end
 
   defp store_summary(scope, attrs) do
     case Activities.upsert_provider_activity(scope, attrs) do
-      {:ok, activity} ->
+      {outcome, activity} when outcome in [:inserted, :updated] ->
         Ingest.activity_recorded(scope, activity)
-        {:ok, activity}
+        {outcome, activity}
 
       {:error, changeset} ->
         Logger.warning(
@@ -190,14 +212,18 @@ defmodule Vire.Ingest.GarminSync do
   defp manual?(summary),
     do: summary["manualActivity"] == true or summary["isManualActivity"] == true
 
-  defp enqueue_downloads(activities, scope) do
+  # A download kept from an earlier run counts towards that run only.
+  defp enqueue_downloads(activities, scope, run_id) do
     activities
     |> Enum.uniq_by(& &1.id)
     |> Enum.with_index()
-    |> Enum.each(fn {activity, index} ->
-      %{user_id: scope.user.id, activity_id: activity.id}
-      |> DownloadWorker.new(schedule_in: index * @download_spacing_seconds)
-      |> Oban.insert!()
+    |> Enum.count(fn {activity, index} ->
+      job =
+        %{user_id: scope.user.id, activity_id: activity.id, run_id: run_id}
+        |> DownloadWorker.new(schedule_in: index * @download_spacing_seconds)
+        |> Oban.insert!()
+
+      not job.conflict?
     end)
   end
 
@@ -211,33 +237,44 @@ defmodule Vire.Ingest.GarminSync do
     {:cancel, reason <> "; the Garmin connection is paused"}
   end
 
-  defp store_download({:ok, fit}, scope, _connection, activity) do
+  defp store_download({:ok, fit}, scope, _connection, activity, run_id) do
     Repo.transact(fn ->
       with {stored, file} when stored in [:stored, :existing] <-
              Ingest.store_file(scope, fit, :fit, :garmin_api),
-           {:ok, _activity} <- Activities.attach_source_file(scope, activity, file),
-           {:ok, _job} <- Ingest.enqueue_parse(scope, file) do
-        {:ok, file}
+           {:ok, _activity} <- Activities.attach_source_file(scope, activity, file) do
+        Ingest.enqueue_parse(scope, file, run_id)
       end
     end)
     |> case do
-      {:ok, _file} -> :ok
-      {:error, :file_held_by_another_activity} -> {:cancel, "another activity holds the file"}
-      {:error, :not_found} -> {:cancel, "the activity no longer exists"}
-      {:error, reason} -> {:error, reason}
+      {:ok, %Oban.Job{conflict?: true}} when is_binary(run_id) ->
+        SyncRuns.file_done(run_id, :parsed)
+        :ok
+
+      {:ok, _job} ->
+        :ok
+
+      {:error, :file_held_by_another_activity} ->
+        {:cancel, "another activity holds the file"}
+
+      {:error, :not_found} ->
+        {:cancel, "the activity no longer exists"}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp store_download({:error, {:key_refused, status}}, scope, connection, _activity),
+  defp store_download({:error, {:key_refused, status}}, scope, connection, _activity, _run_id),
     do: pause(scope, connection, "Garmin refused the API key with status #{status}")
 
-  defp store_download({:error, {:status, 404}}, _scope, _connection, _activity),
+  defp store_download({:error, {:status, 404}}, _scope, _connection, _activity, _run_id),
     do: {:cancel, "Garmin has no file for the activity"}
 
-  defp store_download({:error, :no_fit_file}, _scope, _connection, _activity),
+  defp store_download({:error, :no_fit_file}, _scope, _connection, _activity, _run_id),
     do: {:cancel, "Garmin's archive holds no .fit file"}
 
-  defp store_download({:error, reason}, _scope, _connection, _activity), do: {:error, reason}
+  defp store_download({:error, reason}, _scope, _connection, _activity, _run_id),
+    do: {:error, reason}
 
   defp refused_status({:error, {:key_refused, status}}), do: status
   defp refused_status({:error, _reason}), do: nil

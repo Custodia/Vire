@@ -6,6 +6,7 @@ defmodule Vire.Mcp.Render do
   """
 
   alias Vire.Activities.Activity
+  alias Vire.Ingest.SyncRun
   alias Vire.Training.Block
   alias Vire.Training.Cycle
   alias Vire.Training.Day
@@ -79,6 +80,41 @@ defmodule Vire.Mcp.Render do
       :activity_id,
       :rationale
     ])
+  end
+
+  @doc """
+  A sync run with the activities it found, each with `activity` and its
+  matched `session` or `nil`, and `candidates`, the candidate sessions of
+  each unmatched activity by activity id.
+  """
+  def sync_run(%SyncRun{} = run, activities, candidates) do
+    %{
+      run_id: run.id,
+      state: run.state,
+      files: %{
+        total: run.files_total,
+        fetched: run.files_fetched,
+        parsed: run.files_parsed,
+        failed: run.files_failed
+      },
+      activities: Enum.map(activities, &run_activity(&1, candidates))
+    }
+    |> then(&if(run.error, do: Map.put(&1, :error, run.error), else: &1))
+  end
+
+  defp run_activity(%{activity: activity, session: session}, candidates) do
+    found =
+      activity
+      |> Map.take([:local_date, :discipline, :duration_seconds])
+      |> Map.merge(%{activity_id: activity.id, session_id: session && session.id})
+
+    case Map.get(candidates, activity.id) do
+      sessions when is_list(sessions) and is_nil(session) ->
+        Map.put(found, :candidate_for, sessions)
+
+      _none ->
+        found
+    end
   end
 
   @doc "An activity's summary, without its laps, lengths or provider summary."
