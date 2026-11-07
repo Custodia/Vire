@@ -17,6 +17,8 @@ defmodule Vire.MixProject do
           VireWeb,
           Vire.Schema,
           VireWeb.ConnCase,
+          VireWeb.McpClient,
+          VireWeb.OAuthFlow,
           Vire.DataCase,
           Vire.AccountsFixtures,
           Vire.ActivitiesFixtures,
@@ -46,6 +48,7 @@ defmodule Vire.MixProject do
     [
       {:phoenix, "~> 1.8.16"},
       {:phoenix_ecto, "~> 4.7"},
+      {:phoenix_html, "~> 4.3"},
       {:ecto_sql, "~> 3.14"},
       {:postgrex, "~> 0.22"},
       {:oban, "~> 2.24"},

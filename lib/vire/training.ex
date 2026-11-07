@@ -6,9 +6,10 @@ defmodule Vire.Training do
 
   Every function takes a scope first and touches only its user's rows. A row
   of another user reads as `nil` or an empty list and fails a write with
-  `{:error, :not_found}`. Every write takes a rationale: a created row keeps
-  its own in `attrs`, and an update or delete takes the reason for the change
-  as its last argument.
+  `{:error, :not_found}`. Every write is logged with a reason: a created row
+  keeps its own rationale in `attrs`, which is also the reason unless one is
+  given, and an update or delete takes the reason for the change as its last
+  argument.
   """
 
   import Ecto.Query
@@ -41,12 +42,34 @@ defmodule Vire.Training do
   end
 
   @doc """
+  The start and end of each of the scope's rows of `level`, `:season`,
+  `:phase`, `:block` or `:cycle`, earliest first.
+  """
+  def list_periods(%Scope{} = scope, level) do
+    level
+    |> schema()
+    |> for_user(scope)
+    |> order_by(:period)
+    |> select([row], row.period)
+    |> Repo.all()
+  end
+
+  @doc """
   The plan from season down to sessions, each level in date order.
 
   Given a season id, returns that season with everything beneath it, or `nil`.
   Given a period, returns the seasons that overlap it, with the phases, blocks,
-  cycles and days beneath them that overlap it too.
+  cycles and days beneath them that overlap it too. Given `nil`, returns every
+  season with everything beneath it.
   """
+  def get_plan(%Scope{} = scope, nil) do
+    Season
+    |> for_user(scope)
+    |> order_by(:period)
+    |> Repo.all()
+    |> Repo.preload(plan_preloads(scope, nil))
+  end
+
   def get_plan(%Scope{} = scope, %Period{} = period) do
     Season
     |> for_user(scope)
@@ -73,16 +96,231 @@ defmodule Vire.Training do
     |> Repo.preload([:context, sessions: sessions_query(scope)])
   end
 
+  @doc "The scope's sessions matched to the activities with `activity_ids`, by activity id."
+  def list_matched_sessions(%Scope{} = scope, activity_ids) when is_list(activity_ids) do
+    Session
+    |> for_user(scope)
+    |> where([s], s.activity_id in ^activity_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.activity_id, &1})
+  end
+
+  @doc """
+  The activities that could be each of the scope's `sessions`, by session id:
+  for a session without an activity that is not skipped, the unmatched
+  activities on its date that `Vire.Training.Matcher` gives any confidence,
+  most likely first, each as its `activity_id`, `confidence` and `why`.
+  Each session needs its `id` and `date`.
+  """
+  def list_candidates(%Scope{} = scope, sessions) do
+    dates = sessions |> Enum.map(& &1.date) |> Enum.uniq()
+
+    open =
+      from(s in for_user(Session, scope),
+        join: d in assoc(s, :day),
+        where: d.day in ^dates and is_nil(s.activity_id) and s.status != :skipped,
+        order_by: s.position,
+        select: %{s | date: d.day}
+      )
+      |> Repo.all()
+      |> Enum.group_by(& &1.date)
+
+    activities =
+      scope
+      |> unmatched_activities(dates)
+      |> Repo.all()
+      |> Enum.group_by(& &1.local_date)
+
+    wanted = MapSet.new(sessions, & &1.id)
+
+    open
+    |> Enum.flat_map(fn {date, sessions} ->
+      Matcher.score(Map.get(activities, date, []), sessions)
+    end)
+    |> Enum.filter(&(MapSet.member?(wanted, &1.session_id) and &1.confidence > 0))
+    |> Enum.sort_by(& &1.confidence, :desc)
+    |> Enum.group_by(& &1.session_id, &Map.take(&1, [:activity_id, :confidence, :why]))
+  end
+
+  @doc """
+  What became of each cycle's sessions, by cycle id: how many are planned,
+  done and skipped, how many of the planned ones lie before `today`, and the
+  seconds planned against the seconds of the matched activities.
+  """
+  def cycle_summaries(%Scope{} = scope, cycle_ids, %Date{} = today) do
+    rows =
+      Repo.all(
+        from s in for_user(Session, scope),
+          join: d in assoc(s, :day),
+          left_join: a in Activity,
+          on: a.id == s.activity_id,
+          where: d.cycle_id in ^cycle_ids,
+          select: {d.cycle_id, d.day, s.status, s.planned_seconds, a.duration_seconds}
+      )
+      |> Enum.group_by(&elem(&1, 0))
+
+    Map.new(cycle_ids, fn id -> {id, summary(Map.get(rows, id, []), today)} end)
+  end
+
+  defp summary(rows, today) do
+    count = fn keep -> Enum.count(rows, keep) end
+
+    %{
+      sessions: %{
+        planned: count.(&match?({_, _, :planned, _, _}, &1)),
+        done: count.(&match?({_, _, :done, _, _}, &1)),
+        skipped: count.(&match?({_, _, :skipped, _, _}, &1)),
+        unmatched:
+          count.(fn {_, day, status, _, _} -> status == :planned and Date.before?(day, today) end)
+      },
+      seconds: %{
+        planned: Enum.sum_by(rows, &(elem(&1, 3) || 0)),
+        actual: Enum.sum_by(rows, &(elem(&1, 4) || 0))
+      }
+    }
+  end
+
+  ## Batches
+
+  @doc """
+  Runs `writes`, a function of no arguments answering `{:ok, result}` or
+  `{:error, reason}`, as one transaction whose plan rules are checked once it
+  has run, so one write may pass through a state a later one settles.
+
+  Before the check, every cycle gains a rest day for each of its dates
+  without one, which a cycle widened onto dates another cycle still held
+  before narrowing misses. A broken rule rolls everything back and answers
+  `{:error, {:periods, violations, result}}` with the result `writes`
+  answered, each violation naming the `level` and `id` of the row whose
+  period breaks it, with a `message`.
+  """
+  def batch(%Scope{} = scope, writes) do
+    Repo.transact(fn ->
+      Repo.query!("set constraints all deferred")
+
+      with {:ok, result} <- writes.(),
+           :ok <- fill_days(scope) do
+        checked(scope, result)
+      end
+    end)
+  end
+
+  defp checked(scope, result) do
+    case period_violations(scope) do
+      [] ->
+        Repo.query!("set constraints all immediate")
+        {:ok, result}
+
+      violations ->
+        {:error, {:periods, violations, result}}
+    end
+  end
+
+  defp fill_days(%Scope{user: user}) do
+    Repo.query!(
+      """
+      insert into training_days (id, user_id, cycle_id, day, kind)
+      select gen_random_uuid(), c.user_id, c.id, g.day::date, 'rest'
+        from training_cycles c,
+             generate_series(lower(c.period), upper(c.period) - 1, interval '1 day') g(day)
+        where c.user_id = $1
+      on conflict (user_id, day) do nothing
+      """,
+      [Ecto.UUID.dump!(user.id)]
+    )
+
+    :ok
+  end
+
+  @levels [
+    {:season, "training_seasons", "user_id", nil},
+    {:phase, "training_phases", "season_id", {:season, "training_seasons"}},
+    {:block, "training_blocks", "phase_id", {:phase, "training_phases"}},
+    {:cycle, "training_cycles", "block_id", {:block, "training_blocks"}}
+  ]
+
+  defp period_violations(%Scope{user: user}) do
+    user_id = Ecto.UUID.dump!(user.id)
+
+    outside =
+      for {level, table, key, {parent, parent_table}} <- @levels,
+          [id, first, last, parent_id, parent_first, parent_last] <-
+            rows(
+              """
+              select c.id, lower(c.period), upper(c.period) - 1,
+                     p.id, lower(p.period), upper(p.period) - 1
+                from #{table} c join #{parent_table} p on p.id = c.#{key}
+                where c.user_id = $1 and not p.period @> c.period
+              """,
+              user_id
+            ),
+          violation <- [
+            violation(
+              level,
+              id,
+              "#{dates(first, last)} lies outside its #{parent}, " <>
+                dates(parent_first, parent_last)
+            ),
+            violation(
+              parent,
+              parent_id,
+              "#{dates(parent_first, parent_last)} no longer " <>
+                "holds its #{level} of #{dates(first, last)}"
+            )
+          ],
+          do: violation
+
+    overlapping =
+      for {level, table, key, _parent} <- @levels,
+          [id, other_first, other_last] <-
+            rows(
+              """
+              select a.id, lower(b.period), upper(b.period) - 1
+                from #{table} a join #{table} b
+                  on b.#{key} = a.#{key} and b.id <> a.id and b.period && a.period
+                where a.user_id = $1
+              """,
+              user_id
+            ),
+          do: violation(level, id, "overlaps another #{level}, #{dates(other_first, other_last)}")
+
+    stranded =
+      for [id, date] <-
+            rows(
+              """
+              select c.id, d.day
+                from training_days d join training_cycles c on c.id = d.cycle_id
+                where d.user_id = $1 and not c.period @> d.day
+              """,
+              user_id
+            ),
+          do:
+            violation(
+              :cycle,
+              id,
+              "no longer holds #{date}, a day with a session or a note"
+            )
+
+    outside ++ overlapping ++ stranded
+  end
+
+  defp rows(sql, user_id), do: Repo.query!(sql, [user_id]).rows
+
+  defp violation(level, id, message),
+    do: %{level: level, id: Ecto.UUID.load!(id), message: message}
+
+  defp dates(first, last), do: "#{first} to #{last}"
+
   ## Seasons, phases, blocks and cycles
 
   @doc """
   Creates a season from a name, a period and a rationale, and enqueues a
   Garmin sync of its dates for a user with an unpaused Garmin connection.
   """
-  def create_season(%Scope{user: user} = scope, attrs) do
+  def create_season(%Scope{user: user} = scope, attrs, reason \\ nil) do
     changeset = Season.changeset(%Season{user_id: user.id}, attrs)
 
-    logged(scope, nil, nil, fn ->
+    logged(scope, nil, reason, fn ->
       with {:ok, season} <- Repo.insert(changeset) do
         request_sync(scope, season.period)
         {:ok, season}
@@ -91,28 +329,28 @@ defmodule Vire.Training do
   end
 
   @doc "Creates a phase in a season from a name, a period and a rationale."
-  def create_phase(%Scope{} = scope, season_id, attrs) do
+  def create_phase(%Scope{} = scope, season_id, attrs, reason \\ nil) do
     with {:ok, season} <- fetch_for_write(scope, Season, season_id) do
       changeset = Phase.changeset(%Phase{user_id: season.user_id, season_id: season.id}, attrs)
-      logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
+      logged(scope, nil, reason, fn -> Repo.insert(changeset) end)
     end
   end
 
   @doc "Creates a block in a phase from a focus, a period and a rationale."
-  def create_block(%Scope{} = scope, phase_id, attrs) do
+  def create_block(%Scope{} = scope, phase_id, attrs, reason \\ nil) do
     with {:ok, phase} <- fetch_for_write(scope, Phase, phase_id) do
       changeset = Block.changeset(%Block{user_id: phase.user_id, phase_id: phase.id}, attrs)
-      logged(scope, nil, nil, fn -> Repo.insert(changeset) end)
+      logged(scope, nil, reason, fn -> Repo.insert(changeset) end)
     end
   end
 
   @doc """
   Creates a cycle in a block from a kind, a period and a rationale, with one
-  rest day per date. Without a period the cycle runs from the day after the
-  block's latest cycle, or the block's first day, through the following
-  Sunday, within the block.
+  rest day per date, and answers it with its days. Without a period the cycle
+  runs from the day after the block's latest cycle, or the block's first day,
+  through the following Sunday, within the block.
   """
-  def create_cycle(%Scope{} = scope, block_id, attrs) do
+  def create_cycle(%Scope{} = scope, block_id, attrs, reason \\ nil) do
     with {:ok, block} <- fetch_for_write(scope, Block, block_id) do
       changeset =
         Cycle.create_changeset(
@@ -121,7 +359,7 @@ defmodule Vire.Training do
           next_cycle_period(block)
         )
 
-      logged(scope, nil, nil, fn -> changeset |> Repo.insert() |> with_days() end)
+      logged(scope, nil, reason, fn -> changeset |> Repo.insert() |> with_days() end)
     end
   end
 
@@ -150,9 +388,9 @@ defmodule Vire.Training do
     do: update_level(scope, Block, id, attrs, rationale)
 
   @doc """
-  Changes a cycle's kind, period or rationale. A wider period gains a rest day
-  per new date. A narrower one removes the days it leaves out, and is refused
-  while any of them holds a session.
+  Changes a cycle's kind, period or rationale, and answers it with its days.
+  A wider period gains a rest day per new date. A narrower one removes the
+  days it leaves out, and is refused while any of them holds a session.
   """
   def update_cycle(%Scope{} = scope, id, attrs, rationale) do
     with {:ok, cycle} <- fetch_for_write(scope, Cycle, id) do
@@ -203,13 +441,13 @@ defmodule Vire.Training do
   its structure, the planned seconds and a rationale. The day becomes a
   training day.
   """
-  def create_session(%Scope{user: user} = scope, attrs) do
+  def create_session(%Scope{user: user} = scope, attrs, reason \\ nil) do
     placed =
       %Session{user_id: user.id}
       |> Session.changeset(attrs)
       |> place(scope)
 
-    logged(scope, nil, nil, fn -> write_session(placed, &Repo.insert/1) end)
+    logged(scope, nil, reason, fn -> write_session(placed, &Repo.insert/1) end)
   end
 
   @doc """
@@ -322,10 +560,9 @@ defmodule Vire.Training do
     |> Repo.update!()
   end
 
-  defp unmatched_activities(scope, date) do
-    from a in for_user(Activity, scope),
+  defp unmatched_activities(scope, dates) do
+    from a in on_local_dates(for_user(Activity, scope), dates),
       as: :activity,
-      where: a.local_date == ^date,
       where: not exists(from s in Session, where: s.activity_id == parent_as(:activity).id),
       order_by: [a.started_at, a.id]
   end
@@ -410,7 +647,7 @@ defmodule Vire.Training do
 
   defp with_days({:ok, cycle}) do
     add_days(cycle)
-    {:ok, cycle}
+    {:ok, Repo.preload(cycle, [days: from(d in Day, order_by: d.day)], force: true)}
   end
 
   defp with_days(error), do: error
@@ -467,8 +704,8 @@ defmodule Vire.Training do
     logged(scope, row, rationale, fn -> Repo.delete(changeset) end)
   end
 
-  # Runs a write and records its change in one transaction. An insert's
-  # rationale is the new row's own.
+  # Runs a write and records its change in one transaction. An insert without
+  # a reason of its own logs the new row's rationale.
   defp logged(scope, before, rationale, write) do
     Repo.transact(fn ->
       with {:ok, row} <- write.(),
@@ -493,7 +730,7 @@ defmodule Vire.Training do
       action: action,
       before: PlanChange.snapshot(before),
       after: PlanChange.snapshot(after_row),
-      rationale: if(before, do: rationale, else: row.rationale),
+      rationale: rationale || row.rationale,
       channel: scope.channel,
       mcp_client_id: scope.mcp_client_id
     }
@@ -591,4 +828,14 @@ defmodule Vire.Training do
     do: where(query, [d], d.day >= ^first and d.day <= ^last)
 
   defp for_user(query, %Scope{user: user}), do: where(query, user_id: ^user.id)
+
+  defp on_local_dates(query, %Date{} = date), do: where(query, [a], a.local_date == ^date)
+
+  defp on_local_dates(query, dates) when is_list(dates),
+    do: where(query, [a], a.local_date in ^dates)
+
+  defp schema(:season), do: Season
+  defp schema(:phase), do: Phase
+  defp schema(:block), do: Block
+  defp schema(:cycle), do: Cycle
 end

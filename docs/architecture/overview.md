@@ -6,13 +6,17 @@ lifecycle: living
 # Architecture overview
 
 Vire is one Elixir application, `vire`, against one PostgreSQL database
-([0002](adr/0002-backend-stack.md)). It serves a JSON API and a single-page
-dashboard, and runs background jobs in the same VM.
+([0002](adr/0002-backend-stack.md)). It serves a JSON API, a single-page
+dashboard, and an MCP endpoint with the OAuth endpoints its clients authorize
+through, and runs background jobs in the same VM.
 
 ```
-browser ──HTTP──▶ Phoenix endpoint ──▶ /api/*      JSON API
-                                   ──▶ /assets/*   built dashboard files
-                                   ──▶ /*          dashboard index.html
+browser ────HTTP──▶ Phoenix endpoint ──▶ /api/*          JSON API
+MCP client ─HTTP──▶                  ──▶ /mcp            MCP, JSON-RPC over streamable HTTP
+                                     ──▶ /.well-known/*  OAuth metadata
+                                     ──▶ /oauth/*        OAuth 2.1 authorization server
+                                     ──▶ /assets/*       built dashboard files
+                                     ──▶ /*              dashboard index.html
                   Oban ◀──────────────▶ PostgreSQL ◀── Ecto repo
                   Oban jobs ──HTTPS──▶ Garmin Personal API
                   FIT decoder ──port──▶ node decoder/decode.js
@@ -49,6 +53,62 @@ cache, Oban, Phoenix PubSub and the endpoint, in that order.
   **`GET /api/uploads/:id`** answers the file's status, processor version, error
   and, once processed, its activity's id. Another user's file answers 404. Both
   sit behind the `:authenticated` pipeline.
+- **`POST /mcp`** is the MCP endpoint ([0010](adr/0010-mcp-access.md)). The
+  `:mcp` pipeline answers 403 to an `Origin` header naming another host than
+  the endpoint's, and then checks the bearer token. Without one it answers 401
+  with `WWW-Authenticate: Bearer resource_metadata="<protected resource
+  metadata URL>"`; an unknown, expired or revoked token adds
+  `error="invalid_token"`. A valid token assigns `current_scope` with its
+  user, the MCP channel and its client. Each request carries one JSON-RPC 2.0
+  message, which the endpoint reads and decodes itself, outside the body
+  parsers, up to a megabyte. A request is answered with JSON, a notification or
+  a client's response with 202 and no body; there is no session id. A body
+  that is not JSON answers 400 with -32700, and a batch or a message that is
+  not JSON-RPC 2.0 answers 400 with -32600. An `MCP-Protocol-Version` header
+  naming an unsupported version answers 400, except on `initialize`. **`GET`
+  and `DELETE /mcp`** answer 405.
+- **`GET /files/:id`** serves one source file's bytes to whoever holds a URL
+  signed for it ([0010](adr/0010-mcp-access.md)), with no session or token. A
+  `.fit` file answers as `application/vnd.ant.fit`, any other as
+  `application/octet-stream`, as an attachment named after the file's id and
+  uncached. A missing, altered or expired signature, or a file that is not the
+  signing user's, answers a JSON 404.
+- **The OAuth metadata** for MCP clients ([0010](adr/0010-mcp-access.md)):
+  `GET /.well-known/oauth-protected-resource`, also served at
+  `/.well-known/oauth-protected-resource/mcp`, names `/mcp` as the resource
+  and the application's URL as its authorization server.
+  `GET /.well-known/oauth-authorization-server` names the issuer, the
+  authorization, token and registration endpoints, the `code` response type,
+  the `authorization_code` and `refresh_token` grants, the S256 challenge
+  method and the `none` token endpoint auth method. Every URL is built from the
+  endpoint's configured URL.
+- **`POST /oauth/register`** registers a client from a JSON `client_name` and
+  `redirect_uris` and answers 201 with its `client_id` and no secret. A bad
+  redirect URI answers 400 with `invalid_redirect_uri`, a missing name with
+  `invalid_client_metadata`.
+- **`GET /oauth/authorize`** takes `response_type=code`, `client_id`,
+  `redirect_uri`, an S256 `code_challenge`, `state`, and optionally `scope`,
+  which is ignored, and `resource`. An unknown client, an unregistered redirect
+  URI or a missing challenge answers a 400 page; a wrong response type or
+  resource redirects to the client with the error. Without a signed-in user it
+  answers a sign-in page whose form posts to **`POST /oauth/sign_in`**, which
+  signs in as `POST /api/session` does and redirects back to the same request.
+  With one it answers a consent page whose approve and deny buttons post to
+  **`POST /oauth/authorize`**: approve redirects to the redirect URI with
+  `code` and `state`, deny with `error=access_denied` and `state`.
+- **`POST /oauth/token`** takes a form. The `authorization_code` grant takes
+  `code`, `code_verifier`, `client_id` and `redirect_uri`; the `refresh_token`
+  grant takes `refresh_token` and `client_id`. Both answer a Bearer access
+  token, `expires_in` and a refresh token, uncached. Errors are RFC 6749
+  JSON: `invalid_request`, `invalid_grant` and `unsupported_grant_type` with
+  400, `invalid_client` with 401.
+- **Cross-origin calls**: the metadata, registration and token endpoints answer
+  any origin and its preflight, because browser-based clients call them from
+  their own origin. None of them reads the session.
+- **The `:browser` pipeline** serves the sign-in and consent pages: HTML from
+  server-rendered templates with an inline stylesheet, the session, CSRF protection
+  on every post, the signed-in scope, and secure headers whose content security
+  policy admits only that stylesheet, by hash, and forbids framing.
 - **Static files** come from `priv/static`. Files under `/assets` are cached
   indefinitely, because their names carry a hash of their content.
 - **Every other `GET`** answers with the dashboard's `index.html`, uncached, and
@@ -75,8 +135,90 @@ scope ([0005](adr/0005-access.md)).
 - **A scope** carries the signed-in user and the channel the request came
   through: the dashboard by default, or MCP with the client's id. Every request
   under `/api` is assigned one as `current_scope` when its session names an
-  existing user. Every function that reads or writes a user's data takes the
+  existing user, and every request to `/mcp` one from its access token. Every function that reads or writes a user's data takes the
   scope as its first argument and filters by its user.
+
+## Mcp
+
+The `Mcp` context holds MCP clients, the grants that let them act for a user,
+and the protocol server with its tools ([0010](adr/0010-mcp-access.md)). Codes and tokens are 32 random bytes,
+and only their SHA-256 is stored.
+
+- **A client** has a random client id, a name and one to ten redirect URIs,
+  each https, or http on `localhost` or `127.0.0.1`, without a fragment. A
+  registered client is public and has no secret.
+- **An authorization request** is checked in order: the client, the exact
+  redirect URI, and the S256 challenge, whose failures are shown and not
+  redirected; then the response type and the resource, whose failures go
+  back to the redirect URI with the request's state.
+- **An authorization code** names its user, client, redirect URI and
+  challenge, and lives ten minutes. It is exchanged once, for the same client
+  and redirect URI, with a verifier whose S256 hash is the challenge. A code
+  presented again revokes every token its user holds for that client.
+- **A token** row holds an access token's hash and expiry, an hour after
+  issue, its refresh token's hash and a revocation time. The refresh token
+  lasts thirty days from the row's creation. A refresh revokes the row and
+  issues a new one; a revoked refresh token presented again revokes every
+  token its user holds for that client. Codes and tokens are deleted with
+  their user or client.
+- **The change log** points at the client of a change made over MCP.
+- **The protocol server** answers one message for a scope. `initialize`
+  answers protocol version 2025-06-18 when asked for it or a newer one,
+  2025-03-26 when asked for that, and 2025-06-18 otherwise, with the tools and
+  resources capabilities and the application's name and version. It answers
+  `ping`, `tools/list`, `tools/call`, `resources/list` and
+  `resources/templates/list`, both empty, and `resources/read`, which is
+  always -32002. An unknown method is -32601, params that are not an object
+  -32602.
+- **Tools** are defined in groups. A group module answers a list of tools,
+  each a name, a description, a JSON Schema for its arguments and a function
+  of the scope and the arguments, and the registry lists the groups. `tools/list`
+  describes every registered tool, and `tools/call` of an unknown name is
+  -32602. Arguments are checked against the schema before the tool runs, and
+  a field it does not name is refused. A tool answering `{:ok, map}` gives a
+  result with the map as its structured content and the same JSON as text.
+  Refused arguments and a changeset give a result with `isError` whose
+  structured content and text are `{ok: false, errors}`, each error a path
+  such as `ops[3].sessions[2].date` and a message; `:not_found` or a message
+  gives one with a text explaining it. A tool that raises is logged and
+  answers -32603.
+- **The plan tools** call the `Training` and `Ingest` functions. Dates are
+  ISO 8601 strings, ids are UUID strings, and a period is an object of an
+  inclusive `first` and `last` date. A `when` argument names dates absolute
+  or relative to the UTC date: a date, `today`, `yesterday`, `tomorrow`,
+  `-3d` or `+2d`, the last, this or next week (Monday to Sunday), month or
+  cycle, this block, phase or season, or `{first, last}` of those; answers
+  give it back as a period.
+  - `read_plan` lists the rows of one level, `from`, each going down to
+    `to`, by default from the season to every step; `to: "session"` keeps a
+    session's structure title and note without its steps. Rows below a
+    season carry their chain of the rows above. `when` keeps the rows
+    overlapping its dates at every level, `season_id` one season, and
+    `filter` the sessions of given statuses and disciplines, or the planned
+    ones before today, with the rows above them. `summary` adds each cycle's
+    session counts and its planned and matched seconds. A session without an
+    activity carries the candidates the matcher scores above 0.
+  - `write_plan` takes a `change_log` and a list of creates, updates and
+    deletes, each one shape per level, run in order as one batch. A create
+    carries the rows beneath it, down to a cycle's days and sessions, and a
+    day is updated by its date. A create's root requires a `rationale`, which
+    the rows nested in it inherit unless they give their own; an update's
+    rationale replaces the row's. The change log entry goes to every write of
+    the op, or the op's own when it gives one. It answers the ids of the rows
+    written in the shape of the ops, or every error with its path and nothing
+    written. The plan's rules are written in its description.
+  - `match_session` sets or clears a session's activity with a change log
+    entry and answers the session with its candidates; `sync_now` enqueues a
+    sync.
+- **The activity tools** call the `Activities`, `Ingest` and `Training`
+  functions: `list_activities` for the summaries on the dates a `when` names,
+  optionally of one discipline or only those no session is matched to, each
+  with the id of its matched session; `get_activity` with its laps, lengths,
+  the provider's summary and its matched session; `get_activity_streams` for
+  chosen channels, or every recorded one, at a number of seconds per sample;
+  and `get_activity_files`, which answers for up to 50 activities a signed URL
+  for each original file with its expiry, the file's size and its SHA-256 in
+  hex, and the activities it has no file for with the reason.
 
 ## Training
 
@@ -99,7 +241,8 @@ or a delete takes the reason for the change.
   of one parent, from overlapping. Triggers keep a child inside its parent's
   period and a day inside its cycle, and stop a parent from shrinking past a
   child. They raise check violations named after the rule, so a breach comes
-  back as a changeset error on the period.
+  back as a changeset error on the period. The overlap and trigger checks are
+  deferrable, and a batch defers them to its end.
 - **Days** come with their cycle: creating a cycle creates one rest day per
   date in its period, so a user has at most one day per date. A cycle created
   without a period runs from the day after the block's latest cycle, or from the
@@ -121,14 +264,25 @@ or a delete takes the reason for the change.
   and on the session's date, makes it done or planned, and is logged;
   automatic matching leaves such a session out, and a skipped one too. Only a
   hand sets a session skipped. A per-user advisory lock serialises matching.
+- **A batch** runs many writes in one transaction and checks the period rules
+  once they have all run, so a block can shrink and its neighbour grow in
+  either order. It first gives every cycle a rest day for each date it lacks
+  one, then reports every row breaking a rule with the rule, rolling
+  everything back.
 - **The change log** records every write in the same transaction as one row:
   the entity and its id, insert, update or delete, the row before and after as
-  JSON, the rationale, and the scope's channel and MCP client. A delete's
+  JSON, the reason given or a new row's own rationale, and the scope's channel
+  and MCP client. A delete's
   cascade, and the days a cycle gains or loses, fall under the change of the row
   the caller acted on. Changes list newest first, by entity and id.
-- **Reads** are the list of seasons, the plan from season to sessions for one
-  season or for the seasons overlapping a period, and one day with its sessions
-  and the chain above it from the `training_day_contexts` view.
+- **Reads** are the list of seasons, the start and end of every row of a
+  level, the plan from season to sessions for one season, for the seasons
+  overlapping a period or for every season, and one day with its sessions and
+  the chain above it from the `training_day_contexts` view. Candidates are the
+  unmatched activities on an unmatched session's date the matcher scores above
+  0, most likely first. A cycle's summary counts its sessions planned, done,
+  skipped and still planned before today, and sums their planned seconds and
+  their matched activities' seconds.
 
 ## Ingest
 
@@ -143,6 +297,11 @@ files and scheduled syncs for every user.
   its SHA-256 and its size. Storing bytes the user already has by hash returns
   the stored file as it stands, and says so. A file is read without its bytes
   unless they are asked for.
+- **A signed file URL** names one of the user's files under `/files/:id`
+  with the user's id, an expiry fifteen minutes after it is made, and an
+  HMAC-SHA256 over the file id, the user id and the expiry, keyed by a key
+  derived from the endpoint's secret key base, which production reads from
+  `SECRET_KEY_BASE`. Building one answers the URL and its expiry.
 - **Its status** is pending until a processor reads it, then processed with the
   processor's version, or failed with the error. Check constraints hold those
   pairings.
@@ -276,7 +435,10 @@ Integration first ([0003](adr/0003-testing.md)): ExUnit drives requests through
 the endpoint against Postgres and decodes the synthetic `.fit` fixtures in
 `test/support/fixtures/fit` with the real decoder, with Garmin's API stubbed by
 `Req.Test` answering invented JSON and ZIPs built from the fixtures, and Vitest
-renders the whole app against the MSW handlers in `assets/src/mocks`. Elixir
+renders the whole app against the MSW handlers in `assets/src/mocks`. OAuth
+tests register a client and drive the sign-in and consent pages with their
+CSRF tokens checked, as a browser's posts are, and MCP tests call `/mcp` with
+the access token that flow ends in. Elixir
 tests tagged `dashboard_build` need the built dashboard and are skipped without
 it.
 Playwright (`e2e/`, Chromium only) opens the built dashboard served by Phoenix

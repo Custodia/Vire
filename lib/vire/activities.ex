@@ -49,6 +49,14 @@ defmodule Vire.Activities do
     end
   end
 
+  @doc "The scope's activities among `ids`, without their laps, lengths or streams."
+  def list_activities_by_id(%Scope{} = scope, ids) when is_list(ids) do
+    Activity
+    |> for_user(scope)
+    |> where([a], a.id in ^ids)
+    |> Repo.all()
+  end
+
   @doc "The scope's activity parsed from the source file with `source_file_id`, or `nil`."
   def get_activity_by_source_file(%Scope{} = scope, source_file_id) do
     case Ecto.UUID.cast(source_file_id) do

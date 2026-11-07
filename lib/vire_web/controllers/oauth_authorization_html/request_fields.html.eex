@@ -1,0 +1,4 @@
+<input type="hidden" name="_csrf_token" value="<%= Plug.CSRFProtection.get_csrf_token() %>">
+<%= for {name, value} <- @request.params do %>
+<input type="hidden" name="<%= name %>" value="<%= value %>">
+<% end %>
