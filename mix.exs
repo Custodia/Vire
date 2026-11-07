@@ -52,6 +52,7 @@ defmodule Vire.MixProject do
       {:jason, "~> 1.4"},
       {:bandit, "~> 1.13"},
       {:bcrypt_elixir, "~> 3.3"},
+      {:req, "~> 0.7"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end

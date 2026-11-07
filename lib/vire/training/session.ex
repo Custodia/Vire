@@ -52,4 +52,18 @@ defmodule Vire.Training.Session do
       message: "must be done while an activity is matched"
     )
   end
+
+  @doc """
+  A changeset matching the session to the activity with `activity_id`, which
+  makes it done, or clearing its match with `nil`, which makes it planned.
+  """
+  def match_changeset(session, activity_id) do
+    session
+    |> change(activity_id: activity_id, status: if(activity_id, do: :done, else: :planned))
+    |> unique_constraint(:activity_id,
+      name: :training_sessions_activity_id_index,
+      message: "is matched to another session"
+    )
+    |> foreign_key_constraint(:activity_id, name: :training_sessions_activity_id_fkey)
+  end
 end

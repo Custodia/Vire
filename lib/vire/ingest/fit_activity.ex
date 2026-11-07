@@ -14,6 +14,25 @@ defmodule Vire.Ingest.FitActivity do
   @max_samples 7 * 24 * 3600
   @semicircles_per_degree 2 ** 31 / 180
   @position_channels ["position_lat", "position_long"]
+  @disciplines %{
+    "cycling" => :bike,
+    "road_biking" => :bike,
+    "gravel_cycling" => :bike,
+    "mountain_biking" => :bike,
+    "indoor_cycling" => :bike,
+    "virtual_ride" => :bike,
+    "running" => :run,
+    "street_running" => :run,
+    "trail_running" => :run,
+    "track_running" => :run,
+    "treadmill_running" => :run,
+    "indoor_running" => :run,
+    "swimming" => :swim,
+    "lap_swimming" => :swim,
+    "open_water_swimming" => :swim,
+    "training" => :strength,
+    "strength_training" => :strength
+  }
 
   @type t :: %{activity: map(), laps: [map()], lengths: [map()], streams: [map()]}
 
@@ -39,13 +58,13 @@ defmodule Vire.Ingest.FitActivity do
     end
   end
 
-  @doc "Vire's discipline for a FIT sport and sub-sport, as stored."
-  def discipline("cycling", _sub_sport), do: :bike
-  def discipline("running", _sub_sport), do: :run
-  def discipline("swimming", _sub_sport), do: :swim
-  def discipline("training", _sub_sport), do: :strength
-  def discipline(_sport, "strength_training"), do: :strength
-  def discipline(_sport, _sub_sport), do: :other
+  @doc """
+  Vire's discipline for a sport and sub-sport, named as a FIT file records
+  them or as Garmin's activity type keys do. The sport decides when the lookup
+  knows it, then the sub-sport.
+  """
+  def discipline(sport, sub_sport),
+    do: Map.get(@disciplines, sport) || Map.get(@disciplines, sub_sport, :other)
 
   defp activity(started_at, session, sessions, records, activity_message) do
     offset = utc_offset(activity_message)
