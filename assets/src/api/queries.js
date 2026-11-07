@@ -7,6 +7,8 @@ import {
   getSeason,
   getSeasons,
   getSession,
+  getSync,
+  getUpload,
 } from "./client.js";
 
 export const meQuery = {
@@ -46,4 +48,12 @@ export const streamsQuery = (id, channels, step) => ({
   queryKey: ["activities", id, "streams", channels, step],
   queryFn: () => getActivityStreams(id, channels, step),
   staleTime: Infinity,
+});
+
+export const syncQuery = { queryKey: ["sync"], queryFn: getSync };
+
+export const uploadQuery = (id) => ({
+  queryKey: ["uploads", id],
+  queryFn: () => getUpload(id),
+  enabled: id != null,
 });

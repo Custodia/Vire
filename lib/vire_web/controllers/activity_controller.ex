@@ -2,13 +2,17 @@ defmodule VireWeb.ActivityController do
   use VireWeb, :controller
 
   alias Vire.Activities
+  alias Vire.Training
 
   @step_error "step must be a whole number of seconds from 1"
 
   def show(conn, %{"id" => id}) do
     case Activities.get_activity(conn.assigns.current_scope, id) do
-      nil -> not_found(conn)
-      activity -> render(conn, :show, activity: activity)
+      nil ->
+        not_found(conn)
+
+      activity ->
+        render(conn, :show, activity: activity, session: matched_session(conn, activity))
     end
   end
 
@@ -44,6 +48,12 @@ defmodule VireWeb.ActivityController do
     do: String.split(channels, ",", trim: true)
 
   defp read_channels(_channels), do: :all
+
+  defp matched_session(conn, activity) do
+    conn.assigns.current_scope
+    |> Training.list_matched_sessions([activity.id])
+    |> Map.get(activity.id)
+  end
 
   defp not_found(conn),
     do: conn |> put_status(:not_found) |> put_view(VireWeb.ErrorJSON) |> render(:"404")

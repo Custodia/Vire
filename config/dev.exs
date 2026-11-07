@@ -13,6 +13,8 @@ config :vire, VireWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4000],
   code_reloader: true,
   debug_errors: true,
+  # The browser reaches Phoenix through Vite's dev server, on the same host.
+  check_origin: ["//127.0.0.1", "//localhost"],
   secret_key_base: "0YTV+5HvF+OA5dR5DbqtBvOli16bMJ1Yh2UWfEX0kxyMWgmAhn0FnMGV6csZrYuF",
   watchers: [
     npm: ["run", "dev", cd: Path.expand("../assets", __DIR__)]

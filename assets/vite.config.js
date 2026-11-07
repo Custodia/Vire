@@ -16,6 +16,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": phoenix,
+      "/socket": { target: phoenix, ws: true },
     },
   },
   test: {

@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { File as NodeFile } from "node:buffer";
 import { afterAll, afterEach, beforeAll } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { forgetCsrfToken } from "../api/client.js";
@@ -20,7 +21,32 @@ window.matchMedia = (query) => ({
   removeEventListener: () => {},
 });
 
-beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+// Vitest sends a request with jsdom's FormData past MSW to the network, so a
+// form reaches MSW rebuilt from Node's own FormData and File.
+async function nodeForm(form) {
+  const empty = new Response("", {
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+  });
+  const rebuilt = new (await empty.formData()).constructor();
+  for (const [name, value] of form) {
+    rebuilt.append(
+      name,
+      value instanceof window.Blob
+        ? new NodeFile([await value.arrayBuffer()], value.name, { type: value.type })
+        : value,
+    );
+  }
+  return rebuilt;
+}
+
+beforeAll(() => {
+  server.listen({ onUnhandledRequest: "error" });
+  const intercepted = globalThis.fetch;
+  globalThis.fetch = async (input, init) =>
+    init?.body instanceof window.FormData
+      ? intercepted(input, { ...init, body: await nodeForm(init.body) })
+      : intercepted(input, init);
+});
 afterEach(() => {
   viewport.desktop = true;
   localStorage.clear();

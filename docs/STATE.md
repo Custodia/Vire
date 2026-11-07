@@ -17,7 +17,8 @@ and a React dashboard it serves, laid out for desktops and for phones, where a
 user signs in and sees a calendar of months, weeks and days with each day's
 sessions, a session against its matched activity and the last one like it, and
 the plan of a season as a map of its phases and blocks, its blocks' days and a
-log of the latest plan changes, and matches activities to sessions.
+log of the latest plan changes, matches activities to sessions, uploads `.fit`
+files and starts a Garmin sync, following both as they run over a WebSocket.
 
 ## Open questions
 
@@ -43,3 +44,7 @@ common case. Whether anything else feeds it is undecided.
 - Dashboard screens for readiness, nutrition and settings.
 - Data behind the trend weight, chronic load, weight row, season targets,
   readiness and weight trend the dashboard shows empty.
+- A limit on how often each user can sync with Garmin.
+- A stand-in Garmin server for the end-to-end suite, run as its own process
+  and told by each spec what Garmin answers, with answers built by readable
+  factories, so a spec can follow a sync to its end.

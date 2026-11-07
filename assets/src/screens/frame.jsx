@@ -1,11 +1,15 @@
 import { useState } from "react";
 import { Outlet, useLocation } from "@tanstack/react-router";
+import { LiveUpdates } from "../live/LiveUpdates.jsx";
 import { Frame, PhoneFrame } from "../ui/Frame.jsx";
 import { useIsDesktop } from "../ui/layout.js";
 import { TabBar } from "../ui/TabBar.jsx";
+import { ToastProvider } from "../ui/Toasts.jsx";
 import { TopBar } from "../ui/TopBar.jsx";
 import { MoreSheet } from "./more.jsx";
 import { SignOutButton } from "./sign-out.jsx";
+import { SyncButton, SyncStamp, SyncToasts } from "./sync.jsx";
+import { UploadDialog, UploadSheet } from "./upload.jsx";
 
 const screens = [
   {
@@ -29,8 +33,8 @@ const screens = [
 
 /**
  * Every signed-in screen inside one frame, which stays put as the screens
- * change: a bar across the top on a desktop and tabs along the bottom on a
- * phone.
+ * change, kept current by the user's live updates: a bar across the top on a
+ * desktop and tabs along the bottom on a phone.
  */
 export function AppFrame() {
   const desktop = useIsDesktop();
@@ -40,22 +44,50 @@ export function AppFrame() {
     current: paths.some((path) => pathname.startsWith(path)),
   }));
 
-  return desktop ? (
-    <Frame bar={<TopBar links={links} actions={<SignOutButton />} />}>
-      <Outlet />
-    </Frame>
-  ) : (
-    <PhoneScreens links={links} />
+  return (
+    <ToastProvider>
+      <LiveUpdates />
+      <SyncToasts />
+      {desktop ? (
+        <Frame
+          bar={
+            <TopBar
+              links={links}
+              actions={
+                <>
+                  <SyncStamp />
+                  <UploadDialog />
+                  <SyncButton />
+                  <SignOutButton />
+                </>
+              }
+            />
+          }
+        >
+          <Outlet />
+        </Frame>
+      ) : (
+        <PhoneScreens links={links} />
+      )}
+    </ToastProvider>
   );
 }
 
 function PhoneScreens({ links }) {
-  const [more, setMore] = useState(false);
+  const [sheet, setSheet] = useState(null);
+  const opener = (name) => (open) => setSheet(open ? name : null);
 
   return (
-    <PhoneFrame tabs={<TabBar links={links} moreOpen={more} onMore={() => setMore(true)} />}>
+    <PhoneFrame
+      tabs={<TabBar links={links} moreOpen={sheet === "more"} onMore={() => setSheet("more")} />}
+    >
       <Outlet />
-      <MoreSheet isOpen={more} onOpenChange={setMore} />
+      <MoreSheet
+        isOpen={sheet === "more"}
+        onOpenChange={opener("more")}
+        onUpload={() => setSheet("upload")}
+      />
+      <UploadSheet isOpen={sheet === "upload"} onOpenChange={opener("upload")} />
     </PhoneFrame>
   );
 }

@@ -11,6 +11,10 @@ defmodule VireWeb.Endpoint do
     secure: Application.compile_env(:vire, :secure_session_cookie, false)
   ]
 
+  socket "/socket", VireWeb.UserSocket,
+    websocket: [connect_info: [session: @session_options]],
+    longpoll: false
+
   # Vite names every file under assets/ after a hash of its content.
   plug Plug.Static,
     at: "/",
