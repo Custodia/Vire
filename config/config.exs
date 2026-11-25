@@ -19,8 +19,13 @@ config :vire, VireWeb.Endpoint,
 
 config :vire, Oban,
   repo: Vire.Repo,
-  queues: [default: 10, ingest: 2],
-  plugins: [{Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7}]
+  queues: [default: 10, ingest: 2, garmin: 1],
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 7},
+    {Oban.Plugins.Cron, crontab: [{"0 */3 * * *", Vire.Ingest.SyncScheduler}]}
+  ]
+
+config :vire, Vire.Ingest.Garmin, base_url: "https://personal.connectapi.garmin.com"
 
 config :vire, Vire.Ingest.Decoder,
   script: Path.expand("../decoder/decode.js", __DIR__),
