@@ -423,7 +423,7 @@ defmodule Vire.TrainingTest do
                position: 0,
                discipline: :bike,
                planned_seconds: 5400,
-               structure: %{"steps" => [%{"minutes" => 90, "zone" => 2}]},
+               structure: %{"steps" => [%{"kind" => "work", "seconds" => 5400, "zone" => 2}]},
                rationale: "Endurance ride"
              } = Repo.get!(Session, session.id)
 
@@ -459,6 +459,71 @@ defmodule Vire.TrainingTest do
              |> Repo.preload(:sessions)
              |> Map.get(:sessions)
              |> length() == 1
+    end
+  end
+
+  describe "session structure" do
+    defp create_with_structure(scope, structure) do
+      Training.create_session(scope, %{
+        date: ~D[2026-11-03],
+        position: 0,
+        discipline: :run,
+        structure: structure,
+        rationale: "Intervals"
+      })
+    end
+
+    test "accepts steps with repeats, zones, targets and notes, and keeps other keys",
+         %{scope: scope} do
+      structure = %{
+        "title" => "Run — 4 × 4′",
+        "steps" => [
+          %{"kind" => "warmup", "seconds" => 600, "zone" => 1, "note" => "Easy jog"},
+          %{
+            "repeat" => 4,
+            "steps" => [
+              %{"kind" => "work", "seconds" => 240, "zone" => 4, "target" => "4:30 /km"},
+              %{"kind" => "recovery", "seconds" => 120, "zone" => nil}
+            ]
+          },
+          %{kind: "cooldown", seconds: 300}
+        ]
+      }
+
+      assert {:ok, %Session{structure: ^structure}} = create_with_structure(scope, structure)
+    end
+
+    test "accepts a structure without steps", %{scope: scope} do
+      assert {:ok, %Session{}} = create_with_structure(scope, %{"description" => "Free swim"})
+    end
+
+    test "refuses steps that do not follow the shape", %{scope: scope} do
+      work = %{"kind" => "work", "seconds" => 60}
+
+      cases = [
+        {%{"steps" => "10 minutes"}, "steps must be a list of steps"},
+        {%{"steps" => [1]}, "steps[0] must be an object"},
+        {%{"steps" => [%{"seconds" => 60}]}, "steps[0].kind is required"},
+        {%{"steps" => [%{work | "kind" => "sprint"}]},
+         "steps[0].kind must be one of warmup, work, recovery, cooldown, rest"},
+        {%{"steps" => [work, %{work | "seconds" => 0}]},
+         "steps[1].seconds must be a whole number of seconds above 0"},
+        {%{"steps" => [Map.put(work, "zone", 6)]},
+         "steps[0].zone must be a whole number from 1 to 5"},
+        {%{"steps" => [Map.put(work, "target", 250)]}, "steps[0].target must be a string"},
+        {%{"steps" => [Map.put(work, "note", true)]}, "steps[0].note must be a string"},
+        {%{"steps" => [%{"repeat" => 0, "steps" => [work]}]},
+         "steps[0].repeat must be a whole number of at least 1"},
+        {%{"steps" => [%{"repeat" => 3, "steps" => []}]},
+         "steps[0].steps must list the steps to repeat"},
+        {%{"steps" => [%{"repeat" => 3, "steps" => [%{work | "seconds" => 1.5}]}]},
+         "steps[0].steps[0].seconds must be a whole number of seconds above 0"}
+      ]
+
+      for {structure, message} <- cases do
+        assert {:error, changeset} = create_with_structure(scope, structure)
+        assert errors_on(changeset) == %{structure: [message]}
+      end
     end
   end
 

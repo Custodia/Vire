@@ -1,7 +1,7 @@
 defmodule Vire.Mcp.PlanTools do
   @moduledoc """
   MCP tools that read and write the training plan, from season to session,
-  match sessions by hand, and request a Garmin sync. Every write takes a
+  match sessions by hand, and run and follow a Garmin sync. Every write takes a
   change log entry and lands in the change log under the calling client.
   """
 
@@ -9,12 +9,16 @@ defmodule Vire.Mcp.PlanTools do
 
   import Vire.Mcp.Arguments
 
+  alias Vire.Events
   alias Vire.Ingest
+  alias Vire.Ingest.SyncRun
   alias Vire.Mcp.PlanRead
   alias Vire.Mcp.PlanWrite
   alias Vire.Mcp.Render
   alias Vire.Mcp.Tool
   alias Vire.Training
+
+  @max_wait 120
 
   @impl true
   def tools do
@@ -65,10 +69,30 @@ defmodule Vire.Mcp.PlanTools do
       %Tool{
         name: "sync_now",
         description:
-          "Enqueues a Garmin sync of every season and answers the job's id. Activities " <>
-            "arrive and are matched to sessions as the job runs.",
-        input_schema: object(%{}),
+          "Starts a Garmin sync of every season, or joins the one waiting, and answers its " <>
+            "run when the run finishes or wait_seconds pass, whichever is first, as it stands " <>
+            "then. A run goes queued, then searching while Garmin is asked and each new " <>
+            "activity is stored and matched, then fetching while the .fit files are " <>
+            "downloaded and parsed, five seconds apart, and ends finished or failed. From " <>
+            "fetching on, every activity says which session it matched or could be; " <>
+            "get_sync follows the run.",
+        input_schema:
+          object(%{
+            wait_seconds: %{
+              type: "integer",
+              minimum: 0,
+              maximum: @max_wait,
+              description: "The longest to wait for the run to finish, 0 by default"
+            }
+          }),
         function: &sync_now/2
+      },
+      %Tool{
+        name: "get_sync",
+        description:
+          "Reads a Garmin sync run as sync_now answers it, the latest when run_id is left out.",
+        input_schema: object(%{run_id: id("The run")}),
+        function: &get_sync/2
       }
     ]
   end
@@ -90,12 +114,63 @@ defmodule Vire.Mcp.PlanTools do
     end
   end
 
-  defp sync_now(scope, _args) do
-    case Ingest.sync_now(scope) do
-      {:ok, job} -> {:ok, %{job_id: job.id}}
-      {:error, :not_connected} -> {:error, "The athlete has no Garmin connection"}
-      {:error, :paused} -> {:error, "The athlete's Garmin connection is paused"}
-      {:error, reason} -> {:error, reason}
+  defp sync_now(scope, args) do
+    wait = Map.get(args, "wait_seconds", 0)
+    if wait > 0, do: Events.subscribe(scope)
+
+    try do
+      case Ingest.sync_now(scope) do
+        {:ok, run} -> {:ok, synced(scope, awaited(scope, run, wait))}
+        {:error, :not_connected} -> {:error, "The athlete has no Garmin connection"}
+        {:error, :paused} -> {:error, "The athlete's Garmin connection is paused"}
+        {:error, reason} -> {:error, reason}
+      end
+    after
+      if wait > 0, do: forget_events(scope)
     end
+  end
+
+  defp awaited(_scope, run, 0), do: run
+
+  defp awaited(scope, run, wait) do
+    deadline = System.monotonic_time(:millisecond) + wait * 1000
+    run |> await(deadline) |> then(&(Ingest.get_sync_run(scope, &1.id) || &1))
+  end
+
+  defp await(%SyncRun{state: state} = run, _deadline) when state in [:finished, :failed], do: run
+
+  defp await(%SyncRun{id: id} = run, deadline) do
+    receive do
+      {:sync_run, %SyncRun{id: ^id} = changed} -> await(changed, deadline)
+    after
+      max(deadline - System.monotonic_time(:millisecond), 0) -> run
+    end
+  end
+
+  defp forget_events(scope) do
+    Events.unsubscribe(scope)
+
+    receive do
+      {:sync_run, _run} -> forget_events(scope)
+      {:source_file, _file} -> forget_events(scope)
+    after
+      0 -> :ok
+    end
+  end
+
+  defp get_sync(scope, args) do
+    run =
+      case args["run_id"] do
+        nil -> Ingest.latest_sync_run(scope)
+        id -> Ingest.get_sync_run(scope, id)
+      end
+
+    if run, do: {:ok, synced(scope, run)}, else: {:error, :not_found}
+  end
+
+  defp synced(scope, run) do
+    %{activities: activities} = Ingest.sync_status(scope, run)
+    unmatched = for %{activity: activity, session: nil} <- activities, do: activity
+    Render.sync_run(run, activities, Training.list_candidate_sessions(scope, unmatched))
   end
 end

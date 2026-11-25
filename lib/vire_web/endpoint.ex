@@ -11,6 +11,10 @@ defmodule VireWeb.Endpoint do
     secure: Application.compile_env(:vire, :secure_session_cookie, false)
   ]
 
+  socket "/socket", VireWeb.UserSocket,
+    websocket: [connect_info: [session: @session_options]],
+    longpoll: false
+
   # Vite names every file under assets/ after a hash of its content.
   plug Plug.Static,
     at: "/",
@@ -21,7 +25,8 @@ defmodule VireWeb.Endpoint do
   plug Plug.Static,
     at: "/",
     from: :vire,
-    only: ~w(favicon.svg manifest.webmanifest robots.txt)
+    only:
+      ~w(favicon.svg apple-touch-icon.png icon-192.png icon-512.png manifest.webmanifest robots.txt)
 
   if code_reloading? do
     plug Phoenix.CodeReloader

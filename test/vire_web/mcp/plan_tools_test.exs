@@ -6,6 +6,7 @@ defmodule VireWeb.Mcp.PlanToolsTest do
   import Vire.TrainingFixtures
 
   alias Vire.Accounts.Scope
+  alias Vire.Ingest.SyncRuns
   alias Vire.Ingest.SyncWorker
   alias Vire.Mcp
   alias Vire.Mcp.PlanRead
@@ -99,7 +100,36 @@ defmodule VireWeb.Mcp.PlanToolsTest do
 
     branches = write_plan["inputSchema"]["properties"]["ops"]["items"]["oneOf"]
     assert length(branches) == 16
-    assert %{"session" => _, "phase_tree" => _} = write_plan["inputSchema"]["$defs"]
+    assert %{"session" => _, "phase_tree" => _} = defs = write_plan["inputSchema"]["$defs"]
+
+    assert defs["structure"]["description"] =~
+             "A step has kind (warmup, work, recovery, cooldown or rest)"
+
+    assert %{
+             "anyOf" => [
+               %{"required" => ["kind", "seconds"]},
+               %{"required" => ["repeat", "steps"]}
+             ]
+           } = defs["structure"]["properties"]["steps"]["items"]
+  end
+
+  test "write_plan refuses a structure whose steps break their shape", %{token: token} do
+    build_plan(token)
+
+    assert errors!(token, "write_plan", %{
+             "change_log" => "Strides",
+             "ops" => [
+               %{
+                 "op" => "create",
+                 "level" => "session",
+                 "date" => "2026-07-07",
+                 "position" => 0,
+                 "discipline" => "run",
+                 "structure" => %{"steps" => [%{"repeat" => 4, "steps" => [%{"seconds" => 60}]}]},
+                 "rationale" => "Strides"
+               }
+             ]
+           }) == [{"ops[0].structure.steps[0].steps[0].kind", "is required"}]
   end
 
   test "write_plan creates a season with everything beneath it in one call", ctx do
@@ -459,7 +489,11 @@ defmodule VireWeb.Mcp.PlanToolsTest do
         "date" => "2026-07-08",
         "position" => 0,
         "discipline" => "run",
-        "structure" => %{"title" => "Tempo", "note" => "Hold it", "steps" => [%{"zone" => 3}]},
+        "structure" => %{
+          "title" => "Tempo",
+          "note" => "Hold it",
+          "steps" => [%{"kind" => "work", "seconds" => 1200, "zone" => 3}]
+        },
         "rationale" => "Tempo"
       }
     ])
@@ -721,13 +755,116 @@ defmodule VireWeb.Mcp.PlanToolsTest do
 
     connection = provider_connection_fixture(user)
 
-    assert %{"job_id" => job_id} = ok!(token, "sync_now", %{})
-    assert_enqueued(worker: SyncWorker, args: %{"user_id" => user.id, "first" => nil})
-    assert is_integer(job_id)
+    assert %{"run_id" => run_id, "state" => "queued", "activities" => [], "files" => files} =
+             ok!(token, "sync_now", %{})
+
+    assert files == %{"total" => 0, "fetched" => 0, "parsed" => 0, "failed" => 0}
+
+    assert_enqueued(
+      worker: SyncWorker,
+      args: %{"user_id" => user.id, "first" => nil, "run_id" => run_id}
+    )
 
     {:ok, _paused} =
       Vire.Accounts.pause_provider_connection(Scope.for_user(user), connection)
 
     assert error!(token, "sync_now", %{}) == "The athlete's Garmin connection is paused"
+  end
+
+  test "sync_now waits up to wait_seconds for the run to finish", ctx do
+    %{token: token, user: user, scope: scope} = ctx
+    provider_connection_fixture(user)
+
+    Task.start(fn ->
+      run_id = await_run(scope)
+      SyncRuns.start(run_id)
+      SyncRuns.searched(run_id)
+    end)
+
+    assert %{"state" => "finished"} = ok!(token, "sync_now", %{"wait_seconds" => 5})
+
+    Vire.Repo.delete_all(Oban.Job)
+    started = System.monotonic_time(:millisecond)
+    assert %{"state" => "queued"} = ok!(token, "sync_now", %{"wait_seconds" => 1})
+    assert System.monotonic_time(:millisecond) - started >= 1000
+
+    assert errors!(token, "sync_now", %{"wait_seconds" => 121}) ==
+             [{"wait_seconds", "must be at most 120"}]
+  end
+
+  defp await_run(scope) do
+    case Vire.Ingest.latest_sync_run(scope) do
+      nil ->
+        Process.sleep(10)
+        await_run(scope)
+
+      run ->
+        run.id
+    end
+  end
+
+  test "get_sync reads a run with each activity's session or candidates", ctx do
+    %{token: token, scope: scope, user: user} = ctx
+    plan = build_plan(token)
+
+    %{"results" => [%{"sessions" => [%{"id" => long_id}, %{"id" => matched_id}]}]} =
+      write!(token, [
+        %{
+          "op" => "create",
+          "level" => "cycle",
+          "block_id" => plan.block["id"],
+          "kind" => "load",
+          "rationale" => "Week two",
+          "sessions" => [
+            %{
+              "date" => "2026-07-14",
+              "position" => 0,
+              "discipline" => "bike",
+              "planned_seconds" => 3600
+            },
+            %{
+              "date" => "2026-07-16",
+              "position" => 0,
+              "discipline" => "run",
+              "planned_seconds" => 600
+            }
+          ]
+        }
+      ])
+
+    assert error!(token, "get_sync", %{}) == "Not found"
+
+    ride = activity_fixture(scope, "ride.fit")
+    run = activity_fixture(scope, "run.fit")
+
+    sync_run =
+      Vire.Repo.insert!(%Vire.Ingest.SyncRun{
+        user_id: user.id,
+        trigger: :manual,
+        state: :fetching,
+        new_activity_ids: [ride.id, run.id],
+        files_total: 2,
+        files_fetched: 2,
+        files_parsed: 1
+      })
+
+    assert %{"run_id" => run_id, "state" => "fetching", "activities" => [found_ride, found_run]} =
+             ok!(token, "get_sync", %{})
+
+    assert run_id == sync_run.id
+    assert ok!(token, "get_sync", %{"run_id" => run_id})["run_id"] == run_id
+
+    assert %{"activity_id" => ride_id, "session_id" => nil, "candidate_for" => [candidate]} =
+             found_ride
+
+    assert ride_id == ride.id
+    assert %{"session_id" => ^long_id, "confidence" => confidence} = candidate
+    assert confidence < 0.8
+
+    assert %{"session_id" => ^matched_id, "discipline" => "run", "duration_seconds" => 600} =
+             found_run
+
+    refute Map.has_key?(found_run, "candidate_for")
+    assert error!(token, "get_sync", %{"run_id" => Ecto.UUID.generate()}) == "Not found"
   end
 end
