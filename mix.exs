@@ -19,6 +19,7 @@ defmodule Vire.MixProject do
           VireWeb.ConnCase,
           Vire.DataCase,
           Vire.AccountsFixtures,
+          Vire.ActivitiesFixtures,
           Vire.TrainingFixtures
         ]
       ]
@@ -57,10 +58,11 @@ defmodule Vire.MixProject do
 
   defp aliases do
     [
-      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
+      setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build", "decoder.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       "assets.setup": ["cmd --cd assets npm ci"],
+      "decoder.setup": ["cmd --cd decoder npm ci"],
       "assets.build": ["cmd --cd assets npm run build"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       precommit: [

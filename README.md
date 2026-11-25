@@ -12,17 +12,20 @@ Workout files are uploaded to the application, decoded and stored.
 ## Development
 
 Prerequisites: Elixir 1.20 on Erlang/OTP 29, Node 22, and Docker. Exact versions
-are in `.tool-versions`.
+are in `.tool-versions`. Node is also a runtime requirement: `.fit` files are
+decoded by a Node process, so `node` must be on the application's `PATH`.
 
 ```sh
 docker compose up -d   # PostgreSQL 16 on localhost:5432, user and password postgres
-mix setup              # dependencies, database, dashboard install and build
+mix setup              # dependencies, database, dashboard and decoder packages
 mix phx.server         # API on http://localhost:4000, which serves the last dashboard build
 ```
 
 The dashboard is developed at http://localhost:5173, Vite's dev server, which
 `mix phx.server` starts. It reloads on source edits and proxies `/api` to
 Phoenix.
+
+`mix decoder.setup` installs the decoder's packages alone.
 
 Users are created by an operator; there is no sign-up. The task writes the user
 and their Garmin connection together and prints the new user's id and email:
