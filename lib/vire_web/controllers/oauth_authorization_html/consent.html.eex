@@ -1,0 +1,13 @@
+<h1>Allow <%= @request.client.name %>?</h1>
+<p>Signed in as <strong><%= @user.email %></strong>.</p>
+<p><strong><%= @request.client.name %></strong> will be able to:</p>
+<ul>
+  <li>read your training plan, your activities and their files</li>
+  <li>change your training plan, with every change logged under its name</li>
+</ul>
+<p>Approving returns you to <strong><%= @return_host %></strong>.</p>
+<form method="post" action="/oauth/authorize">
+  <%= request_fields(%{request: @request}) %>
+  <button type="submit" name="decision" value="approve">Approve</button>
+  <button type="submit" name="decision" value="deny" class="secondary">Deny</button>
+</form>

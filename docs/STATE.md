@@ -11,23 +11,25 @@ with a password, a training plan per user from season to session with every
 change logged, the files each user sends kept once per content hash and the
 `.fit` files among them parsed into activities with laps, lengths and streams,
 each user's Garmin activities inside their seasons synced with their files,
+an MCP endpoint behind an OAuth 2.1 authorization server with tools that read
+and write the plan and read activities and their files,
 and a React dashboard it serves, with no screens yet.
 
 ## Open questions
 
-**How an MCP client is granted access.** An MCP client presents its credential
-with no person present at the moment of the request.
-
 **How a paused Garmin connection resumes.** A connection is paused when Garmin
 refuses its key or every search of a sync fails, and nothing yet clears the
 pause.
+
+**What happens to an MCP client's plan changes when the client is deleted.**
+Every change made over MCP names its client, and the change log requires that
+name on every MCP change, so a client with logged changes cannot be deleted.
+Nothing deletes clients yet.
 
 **How nutrition data is entered.** Logging it through an MCP tool covers the
 common case. Whether anything else feeds it is undecided.
 
 ## To implement
 
-- MCP endpoint, and the tools that read workout history.
-- MCP tools that write plans, preferences, goals and nutrition logs.
+- MCP tools that write preferences, goals and nutrition logs.
 - Dashboard screens.
-- Access control for MCP clients.
