@@ -16,6 +16,14 @@ defmodule Vire.ObanTest do
     assert %Oban.Job{state: "available"} = Repo.get!(Oban.Job, job.id)
   end
 
+  test "outside tests, enqueues the Garmin syncs every three hours" do
+    config = Config.Reader.read!("config/config.exs", env: :dev)
+    plugins = config[:vire][Oban][:plugins]
+
+    assert {Oban.Plugins.Cron, crontab: [{"0 */3 * * *", Vire.Ingest.SyncScheduler}]} in plugins
+    assert config[:vire][Oban][:queues][:garmin] == 1
+  end
+
   test "runs a stored job to completion" do
     {:ok, job} = Oban.insert(NoopWorker.new(%{"n" => 2}))
 

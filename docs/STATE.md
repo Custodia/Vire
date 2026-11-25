@@ -10,12 +10,17 @@ application with Ecto and Oban, operator-created users who sign in to the API
 with a password, a training plan per user from season to session with every
 change logged, the files each user sends kept once per content hash and the
 `.fit` files among them parsed into activities with laps, lengths and streams,
+each user's Garmin activities inside their seasons synced with their files,
 and a React dashboard it serves, with no screens yet.
 
 ## Open questions
 
 **How an MCP client is granted access.** An MCP client presents its credential
 with no person present at the moment of the request.
+
+**How a paused Garmin connection resumes.** A connection is paused when Garmin
+refuses its key or every search of a sync fails, and nothing yet clears the
+pause.
 
 **How nutrition data is entered.** Logging it through an MCP tool covers the
 common case. Whether anything else feeds it is undecided.
